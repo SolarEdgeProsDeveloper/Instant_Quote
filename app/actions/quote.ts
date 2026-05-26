@@ -163,12 +163,16 @@ export async function saveDraftAnswers(answers: Answers) {
   await upsertDraft({ answers });
 }
 
+export type Fulfillment = "delivery" | "install";
+
 export async function submitQuote(input: {
   products: CartProduct[];
   answers: Answers;
+  fulfillment?: Fulfillment | null;
 }): Promise<{ id: string }> {
   const { supabase, user } = await requireUser();
   const { total_min, total_max } = totalsOf(input.products);
+  const fulfillment = input.fulfillment ?? null;
 
   // If a draft exists, flip it to submitted with final values.
   const { data: existing, error: lookupError } = await supabase
@@ -190,6 +194,7 @@ export async function submitQuote(input: {
         answers: input.answers,
         total_min,
         total_max,
+        fulfillment,
         submitted_at: new Date().toISOString(),
       })
       .eq("id", existing.id)
@@ -207,6 +212,7 @@ export async function submitQuote(input: {
         answers: input.answers,
         total_min,
         total_max,
+        fulfillment,
         submitted_at: new Date().toISOString(),
       })
       .select("id")
