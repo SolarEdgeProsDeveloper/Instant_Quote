@@ -9,8 +9,11 @@ import {
 } from "@/lib/questions";
 import { getStyleForKey } from "@/lib/service-style";
 import { PriceRange } from "../price-display";
+import { saveDraftAnswers, submitQuote } from "@/app/actions/quote";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const STORAGE_KEY = "instant-quote:estimate:v3";
+const STORAGE_KEY = "instant-quote:estimate:v4";
+const ANSWERS_KEY = "instant-quote:answers:v1";
 
 type EstimateItem = {
   id: string;
@@ -18,9 +21,17 @@ type EstimateItem = {
   service: string;
   minPrice: number | null;
   maxPrice: number | null;
+  imageUrl?: string | null;
+  quantity?: number;
 };
 
-type AnswerValue = string | number | boolean | string[] | null;
+function qtyOf(item: EstimateItem): number {
+  const q = item.quantity ?? 1;
+  return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
+}
+
+type FileMeta = { path: string; name: string; size: number };
+type AnswerValue = string | number | boolean | string[] | FileMeta[] | null;
 type Answers = Record<string, AnswerValue>;
 
 type ServiceGroup = {
@@ -81,11 +92,35 @@ export default function QuestionsForm() {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) setItems(JSON.parse(raw) as EstimateItem[]);
+      const rawAnswers = window.localStorage.getItem(ANSWERS_KEY);
+      if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Answers);
     } catch {
       // ignore
     }
     setHydrated(true);
   }, []);
+
+  // Persist answers to localStorage + debounce-save to DB
+  const dbAnswersSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(ANSWERS_KEY, JSON.stringify(answers));
+    } catch {
+      // ignore
+    }
+
+    if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
+    dbAnswersSaveRef.current = setTimeout(() => {
+      saveDraftAnswers(answers).catch((err) => {
+        console.warn("[draft] save answers failed:", err);
+      });
+    }, 1500);
+
+    return () => {
+      if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
+    };
+  }, [answers, hydrated]);
 
   const grouped: ServiceGroup[] = useMemo(() => {
     const map = new Map<string, EstimateItem[]>();
@@ -99,14 +134,14 @@ export default function QuestionsForm() {
       name: service,
       products,
       set: getQuestionsForService(service),
-      min: products.reduce((s, p) => s + (p.minPrice ?? 0), 0),
-      max: products.reduce((s, p) => s + (p.maxPrice ?? 0), 0),
+      min: products.reduce((s, p) => s + (p.minPrice ?? 0) * qtyOf(p), 0),
+      max: products.reduce((s, p) => s + (p.maxPrice ?? 0) * qtyOf(p), 0),
     }));
   }, [items]);
 
   const totals = useMemo(() => {
-    const min = items.reduce((s, i) => s + (i.minPrice ?? 0), 0);
-    const max = items.reduce((s, i) => s + (i.maxPrice ?? 0), 0);
+    const min = items.reduce((s, i) => s + (i.minPrice ?? 0) * qtyOf(i), 0);
+    const max = items.reduce((s, i) => s + (i.maxPrice ?? 0) * qtyOf(i), 0);
     return { count: items.length, min, max };
   }, [items]);
 
@@ -126,14 +161,45 @@ export default function QuestionsForm() {
     return { totalAnswered: answered, totalQuestions: total };
   }, [grouped, answers]);
 
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   function setAnswer(key: string, value: AnswerValue) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setSubmitError(null);
+    setSubmitting(true);
+
+    try {
+      // Flush any pending debounced saves so the submitted row has the latest.
+      if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
+
+      await submitQuote({ products: items, answers });
+
+      // Successfully persisted — clear local state.
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(ANSWERS_KEY);
+      } catch {
+        // ignore
+      }
+      window.dispatchEvent(new Event("estimate-change"));
+
+      setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      console.error("[submit] failed:", err);
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't submit your estimate. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   if (!hydrated) {
@@ -202,23 +268,35 @@ export default function QuestionsForm() {
                     {g.name}
                   </div>
                   <ul className="mt-1 ml-6 space-y-0.5 text-sm text-slate-600">
-                    {g.products.map((p) => (
-                      <li
-                        key={p.id}
-                        className="flex items-baseline justify-between gap-3"
-                      >
-                        <span className="truncate">{p.name}</span>
-                        <span className="shrink-0 text-xs">
-                          <span className="text-red-600">
-                            {formatPrice(p.minPrice ?? 0)}
+                    {g.products.map((p) => {
+                      const q = qtyOf(p);
+                      const lineMin = (p.minPrice ?? 0) * q;
+                      const lineMax = (p.maxPrice ?? 0) * q;
+                      return (
+                        <li
+                          key={p.id}
+                          className="flex items-baseline justify-between gap-3"
+                        >
+                          <span className="truncate">
+                            {p.name}
+                            {q > 1 && (
+                              <span className="ml-1.5 text-xs text-slate-400">
+                                × {q}
+                              </span>
+                            )}
                           </span>
-                          <span className="mx-1.5 text-slate-300">—</span>
-                          <span className="text-slate-400 line-through">
-                            {formatPrice(p.maxPrice ?? 0)}
+                          <span className="shrink-0 text-xs">
+                            <span className="text-red-600">
+                              {formatPrice(lineMin)}
+                            </span>
+                            <span className="mx-1.5 text-slate-300">—</span>
+                            <span className="text-slate-400 line-through">
+                              {formatPrice(lineMax)}
+                            </span>
                           </span>
-                        </span>
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </li>
               ))}
@@ -250,7 +328,14 @@ export default function QuestionsForm() {
       <ServiceNav grouped={grouped} answers={answers} />
 
       <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 pb-32 sm:px-6">
-        <div className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <Link
+          href="/quote/cart"
+          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+        >
+          <span aria-hidden="true">←</span>
+          Back to cart
+        </Link>
+        <div className="mt-6 mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-rose-700">
             <span aria-hidden="true">✦</span>
             Almost done
@@ -288,24 +373,24 @@ export default function QuestionsForm() {
 
       <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/quote"
-              className="text-sm font-medium text-slate-600 hover:text-slate-900"
-            >
-              ← Back
-            </Link>
-            <span className="hidden text-sm text-slate-500 sm:inline">
-              {totalAnswered} of {totalQuestions} answered
-            </span>
-          </div>
+          <span className="text-sm text-slate-500">
+            {totalAnswered} of {totalQuestions} answered
+          </span>
           <button
             type="submit"
-            className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500"
+            disabled={submitting}
+            className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Submit for estimate
+            {submitting ? "Submitting…" : "Submit for estimate"}
           </button>
         </div>
+        {submitError && (
+          <div className="border-t border-rose-100 bg-rose-50 px-4 py-2 sm:px-6">
+            <p className="mx-auto max-w-5xl text-sm text-rose-700">
+              {submitError}
+            </p>
+          </div>
+        )}
         {totalQuestions > 0 && (
           <div className="h-1 w-full bg-slate-100">
             <div
@@ -587,67 +672,132 @@ function QuestionField({
           </div>
         )}
 
-        {question.type === "file" && <FileDropzone fieldKey={fieldKey} />}
+        {question.type === "file" && (
+          <FileDropzone
+            fieldKey={fieldKey}
+            value={Array.isArray(value) ? (value as FileMeta[]) : []}
+            onChange={(files) => onChange(files)}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function FileDropzone({ fieldKey }: { fieldKey: string }) {
-  const [files, setFiles] = useState<string[]>([]);
-  const inputRef = useRef<HTMLInputElement>(null);
+function FileDropzone({
+  fieldKey,
+  value,
+  onChange,
+}: {
+  fieldKey: string;
+  value: FileMeta[];
+  onChange: (files: FileMeta[]) => void;
+}) {
   const inputId = `file-${fieldKey}`;
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const list = event.target.files;
-    if (!list) return;
-    const names: string[] = [];
-    for (let i = 0; i < list.length; i++) names.push(list[i].name);
-    setFiles((prev) => [...prev, ...names]);
+    if (!list || list.length === 0) return;
+
+    setError(null);
+    setUploading(true);
+
+    const supabase = createSupabaseBrowserClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setError("You must be logged in to upload files.");
+      setUploading(false);
+      return;
+    }
+
+    const uploaded: FileMeta[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i];
+      const ext = file.name.includes(".")
+        ? file.name.slice(file.name.lastIndexOf(".") + 1)
+        : "bin";
+      const safeExt = ext.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "bin";
+      const path = `${user.id}/${crypto.randomUUID()}.${safeExt}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("quote-uploads")
+        .upload(path, file, { contentType: file.type || undefined });
+
+      if (upErr) {
+        console.error("[upload] failed:", upErr);
+        setError(`Couldn't upload ${file.name}.`);
+        continue;
+      }
+
+      uploaded.push({ path, name: file.name, size: file.size });
+    }
+
+    setUploading(false);
+    if (uploaded.length > 0) {
+      onChange([...value, ...uploaded]);
+    }
+    // Reset the input so the user can re-select the same file if they remove it.
+    event.target.value = "";
   }
 
-  function remove(name: string) {
-    setFiles((prev) => prev.filter((n) => n !== name));
+  async function remove(meta: FileMeta) {
+    const supabase = createSupabaseBrowserClient();
+    await supabase.storage.from("quote-uploads").remove([meta.path]);
+    onChange(value.filter((f) => f.path !== meta.path));
   }
 
   return (
     <div>
       <label
         htmlFor={inputId}
-        className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center transition hover:border-indigo-400 hover:bg-indigo-50/40"
+        className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition ${
+          uploading
+            ? "cursor-wait border-indigo-300 bg-indigo-50/60"
+            : "cursor-pointer border-slate-300 bg-slate-50 hover:border-indigo-400 hover:bg-indigo-50/40"
+        }`}
       >
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg shadow-sm">
-          📎
+          {uploading ? "⏳" : "📎"}
         </div>
         <p className="mt-3 text-sm font-medium text-slate-700">
-          Click to upload
+          {uploading ? "Uploading…" : "Click to upload"}
         </p>
         <p className="mt-1 text-xs text-slate-500">
           PNG, JPG, or PDF — multiple files OK
         </p>
         <input
-          ref={inputRef}
           id={inputId}
           type="file"
           multiple
+          disabled={uploading}
           className="sr-only"
           onChange={handleChange}
         />
       </label>
 
-      {files.length > 0 && (
+      {error && (
+        <p className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          {error}
+        </p>
+      )}
+
+      {value.length > 0 && (
         <ul className="mt-3 space-y-1.5">
-          {files.map((name) => (
+          {value.map((file) => (
             <li
-              key={name}
+              key={file.path}
               className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
             >
-              <span className="truncate">📄 {name}</span>
+              <span className="truncate">📄 {file.name}</span>
               <button
                 type="button"
-                onClick={() => remove(name)}
+                onClick={() => remove(file)}
                 className="ml-3 shrink-0 text-slate-400 hover:text-rose-500"
-                aria-label={`Remove ${name}`}
+                aria-label={`Remove ${file.name}`}
               >
                 ✕
               </button>

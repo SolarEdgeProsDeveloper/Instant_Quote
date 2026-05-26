@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "instant-quote:estimate:v3";
+const STORAGE_KEY = "instant-quote:estimate:v4";
 const EVENT_NAME = "estimate-change";
 
 export default function CartBadge() {
@@ -15,6 +15,8 @@ export default function CartBadge() {
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
         const arr = raw ? JSON.parse(raw) : [];
+        // Show the number of distinct products in the cart, not summed
+        // quantity — qty is an attribute of a product, not a separate item.
         const next = Array.isArray(arr) ? arr.length : 0;
         setCount((prev) => {
           if (next !== prev) {
@@ -40,7 +42,7 @@ export default function CartBadge() {
 
   return (
     <Link
-      href="/quote/questions"
+      href="/quote/cart"
       className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-700 transition hover:bg-slate-100"
       aria-label={`Estimate cart, ${count} ${count === 1 ? "item" : "items"}`}
     >

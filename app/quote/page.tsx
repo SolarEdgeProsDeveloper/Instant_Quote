@@ -1,6 +1,12 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getServices, type ServiceItem } from "@/lib/google-sheets";
+import {
+  getProducts,
+  getServices,
+  type Product,
+  type ServiceItem,
+} from "@/lib/google-sheets";
 import CartBadge from "./cart-badge";
 import SignOutButton from "./signout-button";
 import QuoteCatalog from "./quote-catalog";
@@ -16,13 +22,14 @@ export default async function QuotePage() {
   }
 
   let services: ServiceItem[] = [];
+  let products: Product[] = [];
   let fetchError: string | null = null;
   try {
-    services = await getServices();
+    [services, products] = await Promise.all([getServices(), getProducts()]);
   } catch (err) {
     fetchError =
-      err instanceof Error ? err.message : "Failed to load services.";
-    console.error("[/quote] getServices failed:", err);
+      err instanceof Error ? err.message : "Failed to load catalog.";
+    console.error("[/quote] catalog fetch failed:", err);
   }
 
   return (
@@ -33,6 +40,12 @@ export default async function QuotePage() {
             Instant Quote
           </p>
           <div className="flex items-center gap-2 sm:gap-4">
+            <Link
+              href="/quote/history"
+              className="hidden text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:block"
+            >
+              My quotes
+            </Link>
             <CartBadge />
             <p className="hidden text-sm text-slate-600 sm:block">
               {user.email}
@@ -45,11 +58,11 @@ export default async function QuotePage() {
       {fetchError ? (
         <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
           <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            Couldn&apos;t load services from the sheet. {fetchError}
+            Couldn&apos;t load the catalog from the sheet. {fetchError}
           </div>
         </section>
       ) : (
-        <QuoteCatalog services={services} />
+        <QuoteCatalog services={services} products={products} />
       )}
     </main>
   );

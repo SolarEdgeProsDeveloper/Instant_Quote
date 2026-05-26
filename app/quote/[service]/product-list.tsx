@@ -3,12 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ServiceItem } from "@/lib/google-sheets";
 import { getStyleForService } from "@/lib/service-style";
 import { PriceRange } from "../price-display";
+import { ProductCard } from "../product-card";
+import { saveDraftProducts } from "@/app/actions/quote";
 
-const STORAGE_KEY = "instant-quote:estimate:v3";
+const STORAGE_KEY = "instant-quote:estimate:v4";
 
 type EstimateItem = {
   id: string;
@@ -16,7 +18,14 @@ type EstimateItem = {
   service: string;
   minPrice: number | null;
   maxPrice: number | null;
+  imageUrl?: string | null;
+  quantity?: number;
 };
+
+function qtyOf(item: EstimateItem): number {
+  const q = item.quantity ?? 1;
+  return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
+}
 
 export default function ProductList({
   service,
@@ -41,6 +50,8 @@ export default function ProductList({
     setHydrated(true);
   }, []);
 
+  const dbSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!hydrated) return;
     try {
@@ -49,24 +60,34 @@ export default function ProductList({
     } catch {
       // ignore
     }
+
+    if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current);
+    dbSaveTimerRef.current = setTimeout(() => {
+      saveDraftProducts(items).catch((err) => {
+        console.warn("[draft] save products failed:", err);
+      });
+    }, 1500);
+
+    return () => {
+      if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current);
+    };
   }, [items, hydrated]);
 
-  const selectedIds = useMemo(
-    () => new Set(items.map((i) => i.id)),
-    [items],
-  );
-
   const totals = useMemo(() => {
-    const min = items.reduce((s, i) => s + (i.minPrice ?? 0), 0);
-    const max = items.reduce((s, i) => s + (i.maxPrice ?? 0), 0);
+    const min = items.reduce((s, i) => s + (i.minPrice ?? 0) * qtyOf(i), 0);
+    const max = items.reduce((s, i) => s + (i.maxPrice ?? 0) * qtyOf(i), 0);
     return { count: items.length, min, max };
   }, [items]);
 
-  function toggle(product: Product) {
+  const itemById = useMemo(() => {
+    const map = new Map<string, EstimateItem>();
+    for (const i of items) map.set(i.id, i);
+    return map;
+  }, [items]);
+
+  function addProduct(product: Product) {
     setItems((prev) => {
-      if (prev.some((i) => i.id === product.id)) {
-        return prev.filter((i) => i.id !== product.id);
-      }
+      if (prev.some((i) => i.id === product.id)) return prev;
       return [
         ...prev,
         {
@@ -75,8 +96,26 @@ export default function ProductList({
           service: product.service,
           minPrice: product.minPrice,
           maxPrice: product.maxPrice,
+          imageUrl: product.imageUrl,
+          quantity: 1,
         },
       ];
+    });
+  }
+
+  function changeQty(productId: string, delta: number) {
+    setItems((prev) => {
+      const next: EstimateItem[] = [];
+      for (const item of prev) {
+        if (item.id !== productId) {
+          next.push(item);
+          continue;
+        }
+        const newQty = qtyOf(item) + delta;
+        if (newQty <= 0) continue; // remove
+        next.push({ ...item, quantity: newQty });
+      }
+      return next;
     });
   }
 
@@ -101,9 +140,10 @@ export default function ProductList({
         <div className="relative mx-auto max-w-6xl px-6 py-12 sm:py-16">
           <Link
             href="/quote"
-            className="inline-flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white"
+            className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur transition hover:bg-white/20"
           >
-            ← All services
+            <span aria-hidden="true">←</span>
+            All services
           </Link>
           <div className="mt-4 flex items-center gap-4">
             <span
@@ -144,16 +184,21 @@ export default function ProductList({
             No products found for this service yet.
           </div>
         ) : (
-          <ul className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                selected={selectedIds.has(product.id)}
-                onToggle={() => toggle(product)}
-              />
-            ))}
-          </ul>
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {products.map((product) => {
+              const cartItem = itemById.get(product.id);
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  quantity={cartItem ? qtyOf(cartItem) : 0}
+                  onAdd={() => addProduct(product)}
+                  onIncrement={() => changeQty(product.id, 1)}
+                  onDecrement={() => changeQty(product.id, -1)}
+                />
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -165,11 +210,16 @@ export default function ProductList({
                 {totals.count}{" "}
                 {totals.count === 1 ? "product" : "products"}
               </p>
-              <PriceRange min={totals.min} max={totals.max} size="bar" layout="inline" />
+              <PriceRange
+                min={totals.min}
+                max={totals.max}
+                size="bar"
+                layout="inline"
+              />
             </div>
             <button
               type="button"
-              onClick={() => router.push("/quote/questions")}
+              onClick={() => router.push("/quote/cart")}
               className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
             >
               I&apos;m done — Get my estimate
@@ -184,53 +234,6 @@ export default function ProductList({
         </div>
       )}
     </>
-  );
-}
-
-function ProductCard({
-  product,
-  selected,
-  onToggle,
-}: {
-  product: Product;
-  selected: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <li
-      className={`flex flex-col rounded-2xl border bg-white p-5 shadow-sm transition hover:shadow-md ${
-        selected
-          ? "border-indigo-500 ring-2 ring-indigo-200"
-          : "border-slate-200"
-      }`}
-    >
-      <h3 className="text-base font-semibold text-slate-900">
-        {product.name}
-      </h3>
-      {(product.subService || product.unit) && (
-        <p className="mt-1 text-xs text-slate-500">
-          {[product.subService, product.unit].filter(Boolean).join(" · ")}
-        </p>
-      )}
-
-      <div className="mt-4">
-        <PriceRange min={product.minPrice} max={product.maxPrice} size="card" />
-      </div>
-
-      <div className="mt-auto pt-5">
-        <button
-          type="button"
-          onClick={onToggle}
-          className={`w-full rounded-full px-4 py-2.5 text-sm font-medium transition ${
-            selected
-              ? "border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-              : "bg-indigo-600 text-white shadow-sm hover:bg-indigo-500"
-          }`}
-        >
-          {selected ? "Added — Remove" : "Add to estimate"}
-        </button>
-      </div>
-    </li>
   );
 }
 
