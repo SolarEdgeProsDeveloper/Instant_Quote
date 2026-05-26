@@ -130,32 +130,40 @@ export default async function QuoteDetailPage({
                       const lineMin = (p.minPrice ?? 0) * q;
                       const lineMax =
                         p.maxPrice != null ? p.maxPrice * q : null;
+                      const note = quote.notes[p.id];
                       return (
-                        <li
-                          key={p.id}
-                          className="flex items-baseline justify-between gap-3 text-sm"
-                        >
-                          <span className="text-slate-800">
-                            {p.name}
-                            {q > 1 && (
-                              <span className="ml-1.5 text-xs text-slate-400">
-                                × {q}
-                              </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-xs">
-                            <span className="text-rose-600 font-semibold">
-                              {formatPrice(lineMin)}
-                            </span>
-                            {lineMax != null && (
-                              <>
-                                <span className="mx-1.5 text-slate-300">–</span>
-                                <span className="text-slate-400 line-through">
-                                  {formatPrice(lineMax)}
+                        <li key={p.id}>
+                          <div className="flex items-baseline justify-between gap-3 text-sm">
+                            <span className="text-slate-800">
+                              {p.name}
+                              {q > 1 && (
+                                <span className="ml-1.5 text-xs text-slate-400">
+                                  × {q}
                                 </span>
-                              </>
-                            )}
-                          </span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-xs">
+                              <span className="text-rose-600 font-semibold">
+                                {formatPrice(lineMin)}
+                              </span>
+                              {lineMax != null && (
+                                <>
+                                  <span className="mx-1.5 text-slate-300">–</span>
+                                  <span className="text-slate-400 line-through">
+                                    {formatPrice(lineMax)}
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          </div>
+                          {note && (
+                            <div className="mt-1 ml-4 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs italic text-amber-900">
+                              <span aria-hidden="true" className="not-italic text-amber-700">
+                                ✎
+                              </span>
+                              <span className="min-w-0 flex-1">{note}</span>
+                            </div>
+                          )}
                         </li>
                       );
                     })}

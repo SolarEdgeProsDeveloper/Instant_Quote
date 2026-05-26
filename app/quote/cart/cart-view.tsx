@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { saveDraftProducts } from "@/app/actions/quote";
 import { getStyleForService } from "@/lib/service-style";
 import { PriceRange } from "../price-display";
+import { QtySelector } from "../product-card";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
 
@@ -209,9 +210,9 @@ function CartRow({
   const lineMax = (item.maxPrice ?? 0) * qty;
 
   return (
-    <li className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <li className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <div
-        className={`relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br ${style.gradient}`}
+        className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br ${style.gradient}`}
       >
         {showImage ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -223,99 +224,68 @@ function CartRow({
             onError={() => setBroken(true)}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-2xl opacity-70">
+          <div className="absolute inset-0 flex items-center justify-center text-lg opacity-70">
             {style.icon}
           </div>
         )}
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-            <span aria-hidden="true">{style.icon}</span>
-            {item.service}
-          </span>
+        <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
+          <span aria-hidden="true">{style.icon}</span>
+          <span className="truncate">{item.service}</span>
         </div>
-        <h3 className="mt-1.5 text-sm font-semibold text-slate-900 sm:text-base">
+        <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">
           {item.name}
         </h3>
-
-        <div className="mt-2 text-xs text-slate-500">
-          <span>
-            {formatPrice(item.minPrice ?? 0)}
-            {item.maxPrice != null && (
-              <>
-                {" "}
-                <span className="text-slate-400 line-through">
-                  {formatPrice(item.maxPrice)}
-                </span>
-              </>
-            )}
-            {qty > 1 && <span className="ml-1">× {qty}</span>}
+        <p className="mt-0.5 text-xs">
+          <span className="font-semibold text-rose-600">
+            {formatPrice(lineMin)}
           </span>
-        </div>
-
-        {qty > 1 && (
-          <div className="mt-1 text-sm font-semibold">
-            <span className="text-rose-600">{formatPrice(lineMin)}</span>
-            {item.maxPrice != null && (
-              <>
-                <span className="mx-1.5 text-slate-300">–</span>
-                <span className="text-slate-400 line-through">
-                  {formatPrice(lineMax)}
-                </span>
-              </>
-            )}
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-1">
-            <button
-              type="button"
-              onClick={onDecrement}
-              disabled={qty <= 1}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-indigo-700 transition hover:bg-white active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-              aria-label="Decrease quantity"
-            >
-              <span className="text-lg font-semibold leading-none">−</span>
-            </button>
-            <span className="min-w-[2rem] text-center text-sm font-semibold text-indigo-700">
-              {qty}
+          {item.maxPrice != null && (
+            <span className="ml-1.5 text-slate-400 line-through">
+              {formatPrice(lineMax)}
             </span>
-            <button
-              type="button"
-              onClick={onIncrement}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-indigo-700 transition hover:bg-white active:scale-95"
-              aria-label="Increase quantity"
-            >
-              <span className="text-lg font-semibold leading-none">+</span>
-            </button>
-          </div>
-        </div>
+          )}
+          {qty > 1 && (
+            <span className="ml-1.5 text-slate-400">
+              ({qty} × {formatPrice(item.minPrice ?? 0)})
+            </span>
+          )}
+        </p>
       </div>
 
-      <button
-        type="button"
-        onClick={onRemove}
-        className="ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-rose-100 hover:text-rose-600 active:scale-95"
-        aria-label={`Remove ${item.name}`}
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2.25}
-          stroke="currentColor"
-          className="h-5 w-5"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M6 18 18 6M6 6l12 12"
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="w-24">
+          <QtySelector
+            quantity={qty}
+            onIncrement={onIncrement}
+            onDecrement={onDecrement}
+            compact
           />
-        </svg>
-      </button>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-rose-100 hover:text-rose-600 active:scale-95"
+          aria-label={`Remove ${item.name}`}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2.25}
+            stroke="currentColor"
+            className="h-4 w-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 18 18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
     </li>
   );
 }

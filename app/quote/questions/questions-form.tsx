@@ -8,8 +8,12 @@ import {
   type QuestionSet,
 } from "@/lib/questions";
 import { getStyleForKey } from "@/lib/service-style";
-import { PriceRange } from "../price-display";
-import { saveDraftAnswers, submitQuote } from "@/app/actions/quote";
+import {
+  saveDraftAnswers,
+  submitQuote,
+  updateQuoteNotes,
+  type ProductNotes,
+} from "@/app/actions/quote";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
@@ -87,6 +91,8 @@ export default function QuestionsForm() {
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [answers, setAnswers] = useState<Answers>({});
   const [submitted, setSubmitted] = useState(false);
+  const [submitId, setSubmitId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<ProductNotes>({});
 
   useEffect(() => {
     try {
@@ -168,6 +174,21 @@ export default function QuestionsForm() {
     setAnswers((prev) => ({ ...prev, [key]: value }));
   }
 
+  async function saveNote(productId: string, text: string) {
+    const trimmed = text.trim();
+    const nextNotes: ProductNotes = { ...notes };
+    if (trimmed) nextNotes[productId] = trimmed;
+    else delete nextNotes[productId];
+    setNotes(nextNotes);
+    if (submitId) {
+      try {
+        await updateQuoteNotes(submitId, nextNotes);
+      } catch (err) {
+        console.warn("[notes] save failed:", err);
+      }
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitError(null);
@@ -177,7 +198,7 @@ export default function QuestionsForm() {
       // Flush any pending debounced saves so the submitted row has the latest.
       if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
 
-      await submitQuote({ products: items, answers });
+      const { id } = await submitQuote({ products: items, answers });
 
       // Successfully persisted — clear local state.
       try {
@@ -188,6 +209,7 @@ export default function QuestionsForm() {
       }
       window.dispatchEvent(new Event("estimate-change"));
 
+      setSubmitId(id);
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -232,92 +254,122 @@ export default function QuestionsForm() {
   }
 
   if (submitted) {
+    const shortId = (submitId ?? "").replace(/-/g, "").slice(0, 8).toUpperCase();
+
     return (
-      <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-16">
-        <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
-          <div className="bg-gradient-to-br from-emerald-400 to-teal-500 px-8 py-10 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/20 text-3xl backdrop-blur">
-              ✓
-            </div>
-            <h2 className="mt-4 text-2xl font-semibold text-white">
-              Thanks — we have your answers.
-            </h2>
-            <p className="mt-2 text-sm text-emerald-50">
-              We&apos;ll review the details and confirm your final estimate
-              shortly.
+      <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+        {/* Confirmation banner */}
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+            ✓
+          </div>
+          <div>
+            <p className="font-semibold text-emerald-900">
+              Your estimate is ready.
+            </p>
+            <p className="text-sm text-emerald-800">
+              Add a note to any item if you have questions about it.
             </p>
           </div>
-          <div className="px-8 py-6">
-            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
-              Your estimate
-            </p>
-            <div className="mt-2">
-              <PriceRange min={totals.min} max={totals.max} size="hero" />
+        </div>
+
+        {/* Invoice */}
+        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/* Header */}
+          <div className="border-b border-slate-200 px-6 py-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-lg font-bold tracking-tight text-slate-900">
+                  Instant Quote
+                </p>
+              </div>
+              {shortId && (
+                <div className="text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                    Estimate no.
+                  </p>
+                  <p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">
+                    #{shortId}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Line items */}
+          <div className="px-6 py-5">
+            <div className="grid grid-cols-[minmax(0,1fr)_3rem_6.5rem] gap-x-4 border-b border-slate-300 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+              <span>Item</span>
+              <span className="text-right">Qty</span>
+              <span className="text-right">Amount</span>
             </div>
 
-            <p className="mt-6 text-xs font-medium uppercase tracking-widest text-slate-500">
-              Products included
-            </p>
-            <ul className="mt-3 space-y-3">
+            <div className="mt-3 space-y-4">
               {grouped.map((g) => (
-                <li key={g.slug}>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                <div key={g.slug}>
+                  <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
                     <span aria-hidden="true">
                       {getStyleForKey(g.set?.key).icon}
                     </span>
                     {g.name}
                   </div>
-                  <ul className="mt-1 ml-6 space-y-0.5 text-sm text-slate-600">
+                  <ul className="mt-1.5 space-y-2">
                     {g.products.map((p) => {
                       const q = qtyOf(p);
-                      const lineMin = (p.minPrice ?? 0) * q;
-                      const lineMax = (p.maxPrice ?? 0) * q;
+                      const lineTotal = (p.minPrice ?? 0) * q;
                       return (
-                        <li
-                          key={p.id}
-                          className="flex items-baseline justify-between gap-3"
-                        >
-                          <span className="truncate">
-                            {p.name}
-                            {q > 1 && (
-                              <span className="ml-1.5 text-xs text-slate-400">
-                                × {q}
-                              </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 text-xs">
-                            <span className="text-red-600">
-                              {formatPrice(lineMin)}
+                        <li key={p.id}>
+                          <div className="grid grid-cols-[minmax(0,1fr)_3rem_6.5rem] items-baseline gap-x-4 text-sm">
+                            <span className="text-slate-800">{p.name}</span>
+                            <span className="text-right tabular-nums text-slate-600">
+                              {q}
                             </span>
-                            <span className="mx-1.5 text-slate-300">—</span>
-                            <span className="text-slate-400 line-through">
-                              {formatPrice(lineMax)}
+                            <span className="text-right tabular-nums font-medium text-slate-900">
+                              {formatPrice(lineTotal)}
                             </span>
-                          </span>
+                          </div>
+                          <NoteRow
+                            productId={p.id}
+                            note={notes[p.id]}
+                            onSave={(text) => saveNote(p.id, text)}
+                            onDelete={() => saveNote(p.id, "")}
+                          />
                         </li>
                       );
                     })}
                   </ul>
-                </li>
+                </div>
               ))}
-            </ul>
-
-            <div className="mt-6 flex gap-3">
-              <Link
-                href="/quote"
-                className="rounded-full bg-emerald-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-500"
-              >
-                Back to services
-              </Link>
-              <button
-                type="button"
-                onClick={() => setSubmitted(false)}
-                className="rounded-full border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Edit answers
-              </button>
             </div>
           </div>
+
+          {/* Total */}
+          <div className="border-t-2 border-slate-900 px-6 py-4">
+            <div className="flex items-baseline justify-between gap-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-900">
+                Total
+              </p>
+              <p className="text-right text-2xl font-bold tabular-nums text-slate-900">
+                {formatPrice(totals.min)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link
+            href="/quote/history"
+            className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+          >
+            View my quotes
+          </Link>
+          <Link
+            href="/quote"
+            className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Start a new estimate
+          </Link>
         </div>
       </section>
     );
@@ -681,6 +733,107 @@ function QuestionField({
         )}
       </div>
     </div>
+  );
+}
+
+function NoteRow({
+  note,
+  onSave,
+  onDelete,
+}: {
+  productId: string;
+  note: string | undefined;
+  onSave: (text: string) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note ?? "");
+
+  // Keep draft in sync if note prop changes externally
+  useEffect(() => {
+    setDraft(note ?? "");
+  }, [note]);
+
+  function startEdit() {
+    setDraft(note ?? "");
+    setEditing(true);
+  }
+
+  function commit() {
+    onSave(draft);
+    setEditing(false);
+  }
+
+  function cancel() {
+    setDraft(note ?? "");
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div className="mt-1 ml-4 rounded-md bg-amber-50/60 p-2">
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={2}
+          placeholder="Question or comment about this item…"
+          className="w-full resize-y rounded border border-amber-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-200"
+        />
+        <div className="mt-1.5 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={cancel}
+            className="rounded px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={commit}
+            className="rounded bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-500"
+          >
+            Save note
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (note) {
+    return (
+      <div className="mt-1 ml-4 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs">
+        <span aria-hidden="true" className="text-amber-700">✎</span>
+        <p className="min-w-0 flex-1 italic text-amber-900">{note}</p>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={startEdit}
+            className="rounded px-1.5 py-0.5 text-amber-700 hover:bg-amber-100"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="rounded px-1.5 py-0.5 text-amber-700 hover:bg-amber-100"
+            aria-label="Delete note"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={startEdit}
+      className="ml-4 mt-0.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-500"
+    >
+      + Add a note
+    </button>
   );
 }
 

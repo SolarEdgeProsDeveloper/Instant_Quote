@@ -28,6 +28,9 @@ export type AnswerValue =
 
 export type Answers = Record<string, AnswerValue>;
 
+/** Map of product id → note text (set by user on the invoice). */
+export type ProductNotes = Record<string, string>;
+
 export type SubmittedQuoteSummary = {
   id: string;
   submitted_at: string | null;
@@ -38,6 +41,7 @@ export type SubmittedQuoteSummary = {
 
 export type SubmittedQuoteDetail = SubmittedQuoteSummary & {
   answers: Answers;
+  notes: ProductNotes;
 };
 
 async function requireUser() {
@@ -235,7 +239,7 @@ export async function getQuoteById(
   const { supabase, user } = await requireUser();
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, submitted_at, total_min, total_max, products, answers")
+    .select("id, submitted_at, total_min, total_max, products, answers, notes")
     .eq("user_id", user.id)
     .eq("id", id)
     .maybeSingle();
@@ -249,7 +253,21 @@ export async function getQuoteById(
     total_max: data.total_max,
     products: (data.products ?? []) as CartProduct[],
     answers: (data.answers ?? {}) as Answers,
+    notes: (data.notes ?? {}) as ProductNotes,
   };
+}
+
+export async function updateQuoteNotes(
+  quoteId: string,
+  notes: ProductNotes,
+): Promise<void> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase
+    .from("quotes")
+    .update({ notes })
+    .eq("id", quoteId)
+    .eq("user_id", user.id);
+  if (error) throw error;
 }
 
 /**
