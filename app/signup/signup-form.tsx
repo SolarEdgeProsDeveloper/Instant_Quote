@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { notifySignupAction } from "@/app/actions/notify";
 
 export default function SignupForm() {
   const router = useRouter();
@@ -47,6 +48,9 @@ export default function SignupForm() {
       setSubmitting(false);
       return;
     }
+
+    // Fire-and-forget admin notification (failures don't block signup).
+    notifySignupAction(email).catch(() => {});
 
     if (!data.session) {
       setInfo(

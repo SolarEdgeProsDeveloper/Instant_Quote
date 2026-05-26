@@ -1,6 +1,7 @@
 "use server";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { notifyInvoiceSubmitted } from "@/lib/notifications";
 
 export type CartProduct = {
   id: string;
@@ -179,6 +180,7 @@ export async function submitQuote(input: {
 
   if (lookupError) throw lookupError;
 
+  let quoteId: string;
   if (existing) {
     const { data, error } = await supabase
       .from("quotes")
@@ -194,24 +196,36 @@ export async function submitQuote(input: {
       .select("id")
       .single();
     if (error) throw error;
-    return { id: data.id };
+    quoteId = data.id;
+  } else {
+    const { data, error } = await supabase
+      .from("quotes")
+      .insert({
+        user_id: user.id,
+        status: "submitted",
+        products: input.products,
+        answers: input.answers,
+        total_min,
+        total_max,
+        submitted_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    quoteId = data.id;
   }
 
-  const { data, error } = await supabase
-    .from("quotes")
-    .insert({
-      user_id: user.id,
-      status: "submitted",
-      products: input.products,
-      answers: input.answers,
-      total_min,
-      total_max,
-      submitted_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return { id: data.id };
+  // Fire-and-forget admin notification — never block the user on email send.
+  notifyInvoiceSubmitted({
+    quoteId,
+    userEmail: user.email ?? null,
+    products: input.products,
+    totalMin: total_min,
+  }).catch((err) => {
+    console.error("[submitQuote] notify failed:", err);
+  });
+
+  return { id: quoteId };
 }
 
 export async function getUserQuotes(): Promise<SubmittedQuoteSummary[]> {

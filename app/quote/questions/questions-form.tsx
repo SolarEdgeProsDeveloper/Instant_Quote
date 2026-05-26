@@ -19,6 +19,33 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 const STORAGE_KEY = "instant-quote:estimate:v4";
 const ANSWERS_KEY = "instant-quote:answers:v1";
 
+const PAYMENT_OPTIONS = [
+  {
+    id: "pay-now",
+    icon: "💳",
+    title: "Credit / Debit card",
+    description: "Pay the full amount now, processed instantly.",
+  },
+  {
+    id: "financing",
+    icon: "📅",
+    title: "Financing",
+    description: "0–12 months, low or no interest.",
+  },
+  {
+    id: "cash",
+    icon: "💵",
+    title: "Cash",
+    description: "Pay in person on install day.",
+  },
+  {
+    id: "loan",
+    icon: "🏦",
+    title: "Loan",
+    description: "Apply through our lending partners.",
+  },
+];
+
 type EstimateItem = {
   id: string;
   name: string;
@@ -93,6 +120,7 @@ export default function QuestionsForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitId, setSubmitId] = useState<string | null>(null);
   const [notes, setNotes] = useState<ProductNotes>({});
+  const [showPayOptions, setShowPayOptions] = useState(false);
 
   useEffect(() => {
     try {
@@ -356,20 +384,65 @@ export default function QuestionsForm() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href="/quote/history"
-            className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
-          >
-            View my quotes
-          </Link>
-          <Link
-            href="/quote"
-            className="rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Start a new estimate
-          </Link>
+        {/* Pay now / payment options */}
+        <div className="mt-6">
+          {!showPayOptions ? (
+            <button
+              type="button"
+              onClick={() => setShowPayOptions(true)}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-500 sm:w-auto"
+            >
+              Pay now
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-700">
+                  How would you like to pay?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowPayOptions(false)}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {PAYMENT_OPTIONS.map((opt) => (
+                  <li key={opt.id}>
+                    <button
+                      type="button"
+                      onClick={() => alert(`${opt.title}: coming soon.`)}
+                      className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    >
+                      <span
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                        aria-hidden="true"
+                      >
+                        {opt.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {opt.title}
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-600">
+                          {opt.description}
+                        </p>
+                      </div>
+                      <span
+                        aria-hidden="true"
+                        className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+                      >
+                        →
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </section>
     );
