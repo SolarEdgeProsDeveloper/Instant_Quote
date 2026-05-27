@@ -80,6 +80,7 @@ export function ProductCard({
             min={product.minPrice}
             max={product.maxPrice}
             size={compact ? "bar" : "card"}
+            unit={product.unit}
           />
         </div>
 

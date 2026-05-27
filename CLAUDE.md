@@ -228,9 +228,10 @@ is separate — get it from Supabase Dashboard → Settings → API.)
    draft → submitted transition happens once; subsequent updates (e.g.
    adding notes) update the same row's `notes` column in-place.
 
-6. **Fulfillment = "install" skips questions.** `questions-form.tsx`
-   reads fulfillment from localStorage on mount; if it's "install" it
+6. **Fulfillment = "delivery" skips questions.** `questions-form.tsx`
+   reads fulfillment from localStorage on mount; if it's "delivery" it
    auto-submits with empty answers and goes straight to the invoice.
+   "install" goes through the questions form to collect site details.
 
 7. **Email confirmation is ON in Supabase.** Signup creates a user
    with `email_confirmed_at = null`; they can't log in until they

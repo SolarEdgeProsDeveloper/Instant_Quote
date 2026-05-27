@@ -281,8 +281,8 @@ export default function CartView() {
                       Purchase &amp; deliver
                     </p>
                     <p className="mt-0.5 text-xs text-slate-600">
-                      Just the products, shipped to your address. A few
-                      quick questions next.
+                      Just the products, shipped to your address.
+                      Straight to your estimate.
                     </p>
                   </div>
                   <span
@@ -310,8 +310,8 @@ export default function CartView() {
                       Install by us
                     </p>
                     <p className="mt-0.5 text-xs text-slate-600">
-                      Full professional installation included. Straight to
-                      your estimate.
+                      Full professional installation included. A few quick
+                      questions next.
                     </p>
                   </div>
                   <span
@@ -431,5 +431,10 @@ function CartRow({
 
 function formatPrice(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `$${Math.round(n).toLocaleString("en-US")}`;
+  if (n === 0) return "$0";
+  if (Number.isInteger(n)) return `$${n.toLocaleString("en-US")}`;
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
