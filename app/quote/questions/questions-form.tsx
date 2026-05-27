@@ -265,14 +265,16 @@ export default function QuestionsForm() {
     await runSubmit(answers);
   }
 
-  // Auto-submit when fulfillment === "install" — those quotes skip the
-  // questions step and go straight to the invoice.
+  // Auto-submit when fulfillment === "delivery" — products being shipped
+  // don't need a questionnaire, just confirm and produce the invoice.
+  // "install" still goes through the questions form so we can collect site
+  // details.
   const autoSubmittedRef = useRef(false);
   useEffect(() => {
     if (!hydrated) return;
     if (autoSubmittedRef.current) return;
     if (submitted) return;
-    if (fulfillment !== "install") return;
+    if (fulfillment !== "delivery") return;
     if (items.length === 0) return;
     autoSubmittedRef.current = true;
     void runSubmit({});
@@ -308,9 +310,10 @@ export default function QuestionsForm() {
     );
   }
 
-  // "Install by us" skips questions — show a loading card while auto-submit
-  // is in flight (otherwise the user briefly sees the questions form).
-  if (fulfillment === "install" && !submitted) {
+  // "Purchase & deliver" skips questions — show a loading card while
+  // auto-submit is in flight (otherwise the user briefly sees the questions
+  // form).
+  if (fulfillment === "delivery" && !submitted) {
     return (
       <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-16">
         <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
