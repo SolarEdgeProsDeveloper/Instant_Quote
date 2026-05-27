@@ -34,12 +34,22 @@ export default function SignupForm() {
 
     setSubmitting(true);
 
+    // Preserve the `next` destination through the verification email so the
+    // user lands back on (e.g.) /quote/questions after confirming + logging in.
+    const confirmedUrl = new URL(
+      "/auth/confirmed",
+      window.location.origin,
+    );
+    if (nextPath && nextPath !== "/quote") {
+      confirmedUrl.searchParams.set("next", nextPath);
+    }
+
     const supabase = createSupabaseBrowserClient();
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/confirmed`,
+        emailRedirectTo: confirmedUrl.toString(),
       },
     });
 

@@ -74,6 +74,21 @@ export default function CartView() {
     return { count: items.length, min, max };
   }, [items]);
 
+  // ESC closes the checkout modal + lock body scroll while it's open.
+  useEffect(() => {
+    if (!showCheckout) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowCheckout(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [showCheckout]);
+
   function pickFulfillment(choice: Fulfillment) {
     try {
       window.localStorage.setItem(FULFILLMENT_KEY, choice);
@@ -171,110 +186,144 @@ export default function CartView() {
 
       {items.length > 0 && (
         <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur">
-          {!showCheckout ? (
-            <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-4">
-              <div className="flex items-center gap-5">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                  {totals.count}{" "}
-                  {totals.count === 1 ? "product" : "products"}
+          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-4">
+            <div className="flex items-center gap-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                {totals.count}{" "}
+                {totals.count === 1 ? "product" : "products"}
+              </p>
+              <PriceRange
+                min={totals.min}
+                max={totals.max}
+                size="bar"
+                layout="inline"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCheckout(true)}
+              className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
+            >
+              Checkout
+              <span
+                aria-hidden="true"
+                className="transition-transform group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCheckout && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="checkout-modal-title"
+          onClick={() => setShowCheckout(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl sm:p-7"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2
+                  id="checkout-modal-title"
+                  className="text-lg font-semibold text-slate-900"
+                >
+                  How would you like to receive your order?
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Pick one to continue.
                 </p>
-                <PriceRange
-                  min={totals.min}
-                  max={totals.max}
-                  size="bar"
-                  layout="inline"
-                />
               </div>
               <button
                 type="button"
-                onClick={() => setShowCheckout(true)}
-                className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
+                onClick={() => setShowCheckout(false)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
               >
-                Checkout
-                <span
-                  aria-hidden="true"
-                  className="transition-transform group-hover:translate-x-0.5"
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className="h-4 w-4"
                 >
-                  →
-                </span>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18 18 6M6 6l12 12"
+                  />
+                </svg>
               </button>
             </div>
-          ) : (
-            <div className="mx-auto max-w-4xl px-6 py-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-700">
-                  How would you like to receive your order?
-                </p>
+
+            <ul className="mt-6 space-y-3">
+              <li>
                 <button
                   type="button"
-                  onClick={() => setShowCheckout(false)}
-                  className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                  onClick={() => pickFulfillment("delivery")}
+                  className="group flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
                 >
-                  Cancel
+                  <span
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                    aria-hidden="true"
+                  >
+                    📦
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 sm:text-base">
+                      Purchase &amp; deliver
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Just the products, shipped to your address. A few
+                      quick questions next.
+                    </p>
+                  </div>
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+                  >
+                    →
+                  </span>
                 </button>
-              </div>
-              <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => pickFulfillment("delivery")}
-                    className="group flex h-full w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => pickFulfillment("install")}
+                  className="group flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                >
+                  <span
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                    aria-hidden="true"
                   >
-                    <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
-                      aria-hidden="true"
-                    >
-                      📦
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-900 sm:text-base">
-                        Purchase &amp; deliver
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-600">
-                        Just the products, shipped to your address. A few
-                        quick questions next.
-                      </p>
-                    </div>
-                    <span
-                      aria-hidden="true"
-                      className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
-                    >
-                      →
-                    </span>
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => pickFulfillment("install")}
-                    className="group flex h-full w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    🛠️
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 sm:text-base">
+                      Install by us
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      Full professional installation included. Straight to
+                      your estimate.
+                    </p>
+                  </div>
+                  <span
+                    aria-hidden="true"
+                    className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
                   >
-                    <span
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
-                      aria-hidden="true"
-                    >
-                      🛠️
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-900 sm:text-base">
-                        Install by us
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-600">
-                        Full professional installation included. Straight to
-                        your estimate.
-                      </p>
-                    </div>
-                    <span
-                      aria-hidden="true"
-                      className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
-                    >
-                      →
-                    </span>
-                  </button>
-                </li>
-              </ul>
-            </div>
-          )}
+                    →
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
       )}
     </>
