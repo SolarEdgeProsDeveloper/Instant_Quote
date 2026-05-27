@@ -46,7 +46,7 @@ const STYLES: Record<string, ServiceStyle> = {
     gradient: "from-orange-400 via-red-400 to-rose-500",
     ring: "ring-orange-200",
     imageUrl:
-      "https://images.unsplash.com/photo-1631545806609-2f0e29f3df58?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1581094271901-8022df4466f9?w=1200&q=80&auto=format&fit=crop",
     blurb: "Comfort year-round — efficient heating and cooling.",
   },
   electrical: {

@@ -46,8 +46,17 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && isAuthPage) {
+    // If `next` is set and is a relative path, send the user there so the
+    // post-login destination survives the race where the proxy fires before
+    // cookies have fully propagated (and we end up here as a bounce-back).
+    const requestedNext = request.nextUrl.searchParams.get("next");
+    const safeNext =
+      requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+        ? requestedNext
+        : "/quote";
+
     const url = request.nextUrl.clone();
-    url.pathname = "/quote";
+    url.pathname = safeNext;
     url.search = "";
     return NextResponse.redirect(url);
   }
