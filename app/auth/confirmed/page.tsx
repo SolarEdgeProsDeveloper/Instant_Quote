@@ -1,6 +1,15 @@
 import Link from "next/link";
 
-export default function ConfirmedPage() {
+export default async function ConfirmedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  const loginUrl = next
+    ? `/login?next=${encodeURIComponent(next)}`
+    : "/login";
+
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-16">
       <div className="w-full max-w-md">
@@ -13,12 +22,12 @@ export default function ConfirmedPage() {
               Email verified!
             </h1>
             <p className="mt-2 text-sm text-emerald-50">
-              Your account is ready. Log in to start building your estimate.
+              Your account is ready. Log in to pick up where you left off.
             </p>
           </div>
           <div className="px-8 py-6">
             <Link
-              href="/login"
+              href={loginUrl}
               className="block w-full rounded-full bg-indigo-600 px-6 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
             >
               Log in now
