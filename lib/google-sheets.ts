@@ -28,7 +28,7 @@ export type Product = {
   subService: string | null; // column E
   minPrice: number | null; // column F (redline)
   maxPrice: number | null; // column G (cap)
-  imageUrl: string | null; // column I (product photo URL)
+  imageUrl: string | null; // column J (product photo URL)
 };
 
 export type ServiceItem = {
@@ -58,7 +58,7 @@ async function fetchProducts(): Promise<Product[]> {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: CATALOG_SHEET_ID,
-    range: "All!A2:I",
+    range: "All!A2:J",
   });
 
   const rows = (res.data.values ?? []) as string[][];
@@ -79,7 +79,7 @@ async function fetchProducts(): Promise<Product[]> {
     const rowNumber = i + 2; // header is row 1, data starts at row 2
     const id = `r${rowNumber}-${sheetId}`;
 
-    const rawImage = row[8] ? String(row[8]).trim() : "";
+    const rawImage = row[9] ? String(row[9]).trim() : "";
 
     products.push({
       id,
