@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   getProductsForService,
@@ -20,9 +20,6 @@ export default async function ServiceProductsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
-    redirect(`/login?next=/quote/${slug}`);
-  }
 
   const service = await getServiceBySlug(slug);
   if (!service) notFound();
@@ -40,17 +37,30 @@ export default async function ServiceProductsPage({
             Instant Quote
           </Link>
           <div className="flex items-center gap-2 sm:gap-4">
-            <Link
-              href="/quote/history"
-              className="hidden text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:block"
-            >
-              My quotes
-            </Link>
+            {user && (
+              <Link
+                href="/quote/history"
+                className="hidden text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:block"
+              >
+                My quotes
+              </Link>
+            )}
             <CartBadge />
-            <p className="hidden text-sm text-slate-600 sm:block">
-              {user.email}
-            </p>
-            <SignOutButton />
+            {user ? (
+              <>
+                <p className="hidden text-sm text-slate-600 sm:block">
+                  {user.email}
+                </p>
+                <SignOutButton />
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+              >
+                Log in
+              </Link>
+            )}
           </div>
         </div>
       </header>

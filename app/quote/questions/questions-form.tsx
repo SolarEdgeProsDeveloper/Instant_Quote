@@ -12,12 +12,14 @@ import {
   saveDraftAnswers,
   submitQuote,
   updateQuoteNotes,
+  type Fulfillment,
   type ProductNotes,
 } from "@/app/actions/quote";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
 const ANSWERS_KEY = "instant-quote:answers:v1";
+const FULFILLMENT_KEY = "instant-quote:fulfillment:v1";
 
 const PAYMENT_OPTIONS = [
   {
@@ -121,6 +123,7 @@ export default function QuestionsForm() {
   const [submitId, setSubmitId] = useState<string | null>(null);
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
+  const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
 
   useEffect(() => {
     try {
@@ -128,6 +131,10 @@ export default function QuestionsForm() {
       if (raw) setItems(JSON.parse(raw) as EstimateItem[]);
       const rawAnswers = window.localStorage.getItem(ANSWERS_KEY);
       if (rawAnswers) setAnswers(JSON.parse(rawAnswers) as Answers);
+      const rawFulfillment = window.localStorage.getItem(FULFILLMENT_KEY);
+      if (rawFulfillment === "delivery" || rawFulfillment === "install") {
+        setFulfillment(rawFulfillment);
+      }
     } catch {
       // ignore
     }
@@ -217,21 +224,22 @@ export default function QuestionsForm() {
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function runSubmit(answersToSend: Answers) {
     setSubmitError(null);
     setSubmitting(true);
-
     try {
-      // Flush any pending debounced saves so the submitted row has the latest.
       if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
 
-      const { id } = await submitQuote({ products: items, answers });
+      const { id } = await submitQuote({
+        products: items,
+        answers: answersToSend,
+        fulfillment,
+      });
 
-      // Successfully persisted — clear local state.
       try {
         window.localStorage.removeItem(STORAGE_KEY);
         window.localStorage.removeItem(ANSWERS_KEY);
+        window.localStorage.removeItem(FULFILLMENT_KEY);
       } catch {
         // ignore
       }
@@ -251,6 +259,25 @@ export default function QuestionsForm() {
       setSubmitting(false);
     }
   }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await runSubmit(answers);
+  }
+
+  // Auto-submit when fulfillment === "install" — those quotes skip the
+  // questions step and go straight to the invoice.
+  const autoSubmittedRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated) return;
+    if (autoSubmittedRef.current) return;
+    if (submitted) return;
+    if (fulfillment !== "install") return;
+    if (items.length === 0) return;
+    autoSubmittedRef.current = true;
+    void runSubmit({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, fulfillment, items.length, submitted]);
 
   if (!hydrated) {
     return (
@@ -276,6 +303,26 @@ export default function QuestionsForm() {
           >
             Browse services
           </Link>
+        </div>
+      </section>
+    );
+  }
+
+  // "Install by us" skips questions — show a loading card while auto-submit
+  // is in flight (otherwise the user briefly sees the questions form).
+  if (fulfillment === "install" && !submitted) {
+    return (
+      <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-16">
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm">
+          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600" />
+          <p className="mt-4 text-sm font-medium text-slate-700">
+            Generating your estimate…
+          </p>
+          {submitError && (
+            <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {submitError}
+            </p>
+          )}
         </div>
       </section>
     );

@@ -30,7 +30,12 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isProtected = pathname.startsWith("/quote");
+  // Auth is deferred — catalog, product list, and cart are PUBLIC. We only
+  // gate the steps that need a user identity: questions (to attribute the
+  // submitted quote) and history (to fetch their own past quotes).
+  const isProtected =
+    pathname === "/quote/questions" ||
+    pathname.startsWith("/quote/history");
   const isAuthPage = pathname === "/login" || pathname === "/signup";
 
   if (!user && isProtected) {

@@ -9,6 +9,9 @@ import { PriceRange } from "../price-display";
 import { QtySelector } from "../product-card";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
+const FULFILLMENT_KEY = "instant-quote:fulfillment:v1";
+
+type Fulfillment = "delivery" | "install";
 
 type EstimateItem = {
   id: string;
@@ -28,6 +31,7 @@ function qtyOf(item: EstimateItem): number {
 export default function CartView() {
   const router = useRouter();
   const [items, setItems] = useState<EstimateItem[]>([]);
+  const [showCheckout, setShowCheckout] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -69,6 +73,15 @@ export default function CartView() {
     const max = items.reduce((s, i) => s + (i.maxPrice ?? 0) * qtyOf(i), 0);
     return { count: items.length, min, max };
   }, [items]);
+
+  function pickFulfillment(choice: Fulfillment) {
+    try {
+      window.localStorage.setItem(FULFILLMENT_KEY, choice);
+    } catch {
+      // ignore
+    }
+    router.push("/quote/questions");
+  }
 
   function remove(id: string) {
     setItems((prev) => prev.filter((i) => i.id !== id));
@@ -158,33 +171,110 @@ export default function CartView() {
 
       {items.length > 0 && (
         <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur">
-          <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-4">
-            <div className="flex items-center gap-5">
-              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                {totals.count}{" "}
-                {totals.count === 1 ? "product" : "products"}
-              </p>
-              <PriceRange
-                min={totals.min}
-                max={totals.max}
-                size="bar"
-                layout="inline"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/quote/questions")}
-              className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
-            >
-              Done — Get my estimate
-              <span
-                aria-hidden="true"
-                className="transition-transform group-hover:translate-x-0.5"
+          {!showCheckout ? (
+            <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-6 py-4">
+              <div className="flex items-center gap-5">
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                  {totals.count}{" "}
+                  {totals.count === 1 ? "product" : "products"}
+                </p>
+                <PriceRange
+                  min={totals.min}
+                  max={totals.max}
+                  size="bar"
+                  layout="inline"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCheckout(true)}
+                className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
               >
-                →
-              </span>
-            </button>
-          </div>
+                Checkout
+                <span
+                  aria-hidden="true"
+                  className="transition-transform group-hover:translate-x-0.5"
+                >
+                  →
+                </span>
+              </button>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-4xl px-6 py-5">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-700">
+                  How would you like to receive your order?
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowCheckout(false)}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-900"
+                >
+                  Cancel
+                </button>
+              </div>
+              <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => pickFulfillment("delivery")}
+                    className="group flex h-full w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                      aria-hidden="true"
+                    >
+                      📦
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 sm:text-base">
+                        Purchase &amp; deliver
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        Just the products, shipped to your address. A few
+                        quick questions next.
+                      </p>
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+                    >
+                      →
+                    </span>
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => pickFulfillment("install")}
+                    className="group flex h-full w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                      aria-hidden="true"
+                    >
+                      🛠️
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 sm:text-base">
+                        Install by us
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        Full professional installation included. Straight to
+                        your estimate.
+                      </p>
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+                    >
+                      →
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          )}
         </div>
       )}
     </>
