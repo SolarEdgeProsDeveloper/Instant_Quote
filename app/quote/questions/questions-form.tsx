@@ -548,6 +548,19 @@ export default function QuestionsForm() {
             />
           ))}
         </div>
+
+        {submitError && (
+          <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <p className="text-sm font-semibold text-rose-900">
+              We couldn&apos;t submit your estimate.
+            </p>
+            <p className="mt-1 text-xs text-rose-700">{submitError}</p>
+            <p className="mt-2 text-xs text-rose-600">
+              Try again. If it keeps happening, take a screenshot of this
+              message and share it with us.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/90 backdrop-blur">
