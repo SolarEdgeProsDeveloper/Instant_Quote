@@ -431,5 +431,10 @@ function CartRow({
 
 function formatPrice(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `$${Math.round(n).toLocaleString("en-US")}`;
+  if (n === 0) return "$0";
+  if (Number.isInteger(n)) return `$${n.toLocaleString("en-US")}`;
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }

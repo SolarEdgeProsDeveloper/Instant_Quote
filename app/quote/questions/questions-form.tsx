@@ -85,7 +85,11 @@ function slugifyService(name: string): string {
 
 function formatPrice(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "$0";
-  return `$${Math.round(n).toLocaleString("en-US")}`;
+  if (Number.isInteger(n)) return `$${n.toLocaleString("en-US")}`;
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function isAnswered(q: Question, v: AnswerValue): boolean {
