@@ -272,6 +272,34 @@ export default function QuestionsForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Validate all required questions are answered. We do this in JS
+    // (rather than relying on HTML5 `required`) because our radio/checkbox
+    // inputs use `peer sr-only` styling, which prevents the browser's native
+    // tooltip from displaying on focus.
+    for (const group of grouped) {
+      if (!group.set) continue;
+      for (const section of group.set.sections) {
+        for (const q of section.questions) {
+          if (!q.required) continue;
+          const value = answers[`${group.slug}.${q.id}`] ?? null;
+          if (!isAnswered(q, value)) {
+            setSubmitError(
+              `Please answer: "${q.label}" before submitting.`,
+            );
+            // Scroll the offending service section into view so the user
+            // can find it quickly.
+            const el = document.getElementById(`service-${group.slug}`);
+            el?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+            return;
+          }
+        }
+      }
+    }
+
     await runSubmit(answers);
   }
 

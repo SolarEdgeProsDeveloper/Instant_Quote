@@ -51,6 +51,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             label:
               "What is your approximate average monthly electric bill or annual kWh usage?",
             type: "text",
+            required: true,
             helpText:
               "Upload 12 months of bills below for highest accuracy.",
           },
@@ -63,6 +64,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             id: "utility-provider",
             label: "Who is your utility provider?",
             type: "text",
+            required: true,
           },
         ],
       },
@@ -73,6 +75,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             id: "roof-type",
             label: "What is your roof type?",
             type: "single-choice",
+            required: true,
             options: [
               "Asphalt shingle",
               "Metal",
@@ -86,18 +89,21 @@ export const QUESTION_SETS: QuestionSet[] = [
             label:
               "What is the approximate age and overall condition of your roof?",
             type: "text",
+            required: true,
           },
           {
             id: "roof-space",
             label:
               "How much usable roof space do you have (or approximate square footage available for panels)?",
             type: "text",
+            required: true,
           },
           {
             id: "shading",
             label:
               "Does your roof have significant shading from trees, buildings, or other structures? Describe.",
             type: "textarea",
+            required: true,
           },
           {
             id: "shading-photos",
@@ -109,6 +115,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             label:
               "What is the primary orientation of your main roof surfaces? (South-facing ideal)",
             type: "single-choice",
+            required: true,
             options: ["South", "North", "East", "West", "Mixed / unsure"],
           },
         ],
@@ -120,6 +127,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             id: "main-goal",
             label: "What is your main goal?",
             type: "single-choice",
+            required: true,
             options: [
               "Maximize offset of usage",
               "Specific kW size",
@@ -131,6 +139,7 @@ export const QUESTION_SETS: QuestionSet[] = [
             id: "battery-storage",
             label: "Are you interested in battery storage?",
             type: "single-choice",
+            required: true,
             options: ["Whole-home backup", "Critical loads only", "None"],
           },
           {
@@ -138,11 +147,13 @@ export const QUESTION_SETS: QuestionSet[] = [
             label:
               "Do you have or plan to add an EV charger or other major electrical loads?",
             type: "textarea",
+            required: true,
           },
           {
             id: "existing-solar",
             label: "Any existing solar system?",
             type: "textarea",
+            required: true,
           },
         ],
       },
@@ -154,16 +165,19 @@ export const QUESTION_SETS: QuestionSet[] = [
             label:
               "Do you own the home? Any HOA restrictions or architectural review requirements?",
             type: "textarea",
+            required: true,
           },
           {
             id: "timeline",
             label: "Preferred timeline for installation?",
             type: "text",
+            required: true,
           },
           {
             id: "financing",
             label: "Financing preference?",
             type: "single-choice",
+            required: true,
             options: [
               "Cash",
               "Loan",
