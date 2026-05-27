@@ -120,17 +120,18 @@ notification_recipients (
 
 - Sheet ID: `15icsefQCXW39db3PzNqNT7Y1YUxmnG-jqEAParr5eMc` (hardcoded
   fallback; overridable via `CATALOG_SHEET_ID` env var).
-- Tab: `All`. Range read: `A2:I`.
+- Tab: `All`. Range read: `A2:J`.
 - Columns:
   - A: sheet ID (NOT unique — duplicates exist in some sections)
   - B: product name
-  - C: unit
+  - C: unit (e.g. "watt" — rendered as `/watt` suffix next to per-unit prices)
   - D: service category (what we group by)
   - E: sub-service
   - F: min price (red, shown bold)
   - G: max price (no longer shown after invoice redesign — formerly strikethrough)
   - H: solar bonus (unused here, used in invoice-generator)
-  - I: product image URL
+  - I: (unused)
+  - J: product image URL
 - Cart IDs are NOT column A. We use `r{rowNumber}-{sheetId}` because of
   duplicate column-A values in the sheet. See [lib/google-sheets.ts](lib/google-sheets.ts).
 - Service hero image = first product (by sheet row order) in that
