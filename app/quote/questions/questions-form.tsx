@@ -251,7 +251,13 @@ export default function QuestionsForm() {
 
       setSubmitId(id);
       setSubmitted(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      // Force the browser to recalc layout + scroll to top AFTER React has
+      // unmounted the (tall) questions form and rendered the (shorter) invoice.
+      // Smooth scroll fights with the DOM mutation; instant scroll after a
+      // RAF is reliable across browsers + viewport widths.
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+      });
     } catch (err) {
       console.error("[submit] failed:", err);
       setSubmitError(
@@ -339,7 +345,15 @@ export default function QuestionsForm() {
     const shortId = (submitId ?? "").replace(/-/g, "").slice(0, 8).toUpperCase();
 
     return (
-      <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
+      <section
+        ref={(el) => {
+          // Belt-and-suspenders: even if window.scrollTo failed (smooth-scroll
+          // race in prod, custom scroll-snap, etc.), scrollIntoView on the
+          // actual element guarantees it ends up in view.
+          el?.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" });
+        }}
+        className="mx-auto w-full max-w-3xl flex-1 px-6 py-12"
+      >
         {/* Confirmation banner */}
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
