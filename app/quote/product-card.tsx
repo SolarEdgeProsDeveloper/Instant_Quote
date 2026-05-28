@@ -1,9 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { Product } from "@/lib/google-sheets";
 import { getStyleForService } from "@/lib/service-style";
 import { PriceRange } from "./price-display";
+
+function slugifyServiceClient(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export function ProductCard({
   product,
@@ -24,15 +32,25 @@ export function ProductCard({
   const [imgBroken, setImgBroken] = useState(false);
   const showImage = product.imageUrl && !imgBroken;
   const inCart = quantity > 0;
+  const detailHref = `/quote/${slugifyServiceClient(product.service)}/${encodeURIComponent(product.id)}`;
 
   return (
     <article
-      className={`flex h-full flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md ${
+      className={`group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md ${
         inCart
           ? "border-indigo-500 ring-2 ring-indigo-200"
           : "border-slate-200"
       }`}
     >
+      {/* Card-wide click target. z-10 sits above the image/title (which
+          live in `relative` containers and otherwise paint on top of an
+          auto/z-0 absolute sibling). Interactive controls are lifted to
+          z-20 so the Add button / +/− still receive clicks. */}
+      <Link
+        href={detailHref}
+        aria-label={`View ${product.name}`}
+        className="absolute inset-0 z-10 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+      />
       <div
         className={`relative overflow-hidden bg-gradient-to-br ${style.gradient} ${
           compact ? "aspect-video" : "aspect-[4/3]"
@@ -44,7 +62,7 @@ export function ProductCard({
             src={product.imageUrl!}
             alt={product.name}
             loading="lazy"
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             onError={() => setImgBroken(true)}
           />
         )}
@@ -84,7 +102,7 @@ export function ProductCard({
           />
         </div>
 
-        <div className={`mt-auto ${compact ? "pt-2" : "pt-5"}`}>
+        <div className={`relative z-20 mt-auto ${compact ? "pt-2" : "pt-5"}`}>
           {inCart ? (
             <QtySelector
               quantity={quantity}
