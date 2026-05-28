@@ -29,6 +29,12 @@ out via SMTP (Nodemailer).
                       (search bar in header on EVERY /quote/** page →
                        autocomplete dropdown, navigates to /quote/[service])
 /quote/[service]   → product list for one service category             [PUBLIC]
+/quote/[service]/[productId] → single-product detail page              [PUBLIC]
+                      (image + name + price + add-to-estimate. "Related
+                       products" below has two sub-sections in order:
+                       1) "Adders"  → same service, subService==="adder"
+                       2) "More in <Service>" → same service, every
+                          other product. Both exclude the current product.)
 /quote/cart        → review cart, qty controls, remove items           [PUBLIC]
                       Checkout button → centered modal w/ 2 options:
                         - Purchase & deliver  → /quote/questions

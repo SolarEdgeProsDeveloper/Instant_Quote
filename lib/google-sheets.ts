@@ -195,6 +195,48 @@ export async function getProductsForService(
   return products.filter((p) => slugifyService(p.service) === serviceSlug);
 }
 
+export async function getProductById(id: string): Promise<Product | null> {
+  const products = await getProducts();
+  return products.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Returns all "Adder" sub-service products for the given service slug,
+ * excluding the product the caller is currently viewing (so the detail
+ * page doesn't show its own card in the related grid when the user lands
+ * on an adder).
+ */
+export async function getRelatedAdders(
+  serviceSlug: string,
+  excludeProductId: string,
+): Promise<Product[]> {
+  const products = await getProducts();
+  return products.filter(
+    (p) =>
+      slugifyService(p.service) === serviceSlug &&
+      p.subService?.toLowerCase() === "adder" &&
+      p.id !== excludeProductId,
+  );
+}
+
+/**
+ * Other products in the same service that are NOT adders and NOT the
+ * currently-viewed product. Used to round out the "Related products"
+ * grid below the adders.
+ */
+export async function getOthersInService(
+  serviceSlug: string,
+  excludeProductId: string,
+): Promise<Product[]> {
+  const products = await getProducts();
+  return products.filter(
+    (p) =>
+      slugifyService(p.service) === serviceSlug &&
+      p.subService?.toLowerCase() !== "adder" &&
+      p.id !== excludeProductId,
+  );
+}
+
 export async function getServiceBySlug(
   slug: string,
 ): Promise<ServiceItem | null> {
