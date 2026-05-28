@@ -26,6 +26,8 @@ out via SMTP (Nodemailer).
 ```
 /                  → redirects to /quote (the welcome page is removed)
 /quote             → catalog: service cards + horizontal product rows  [PUBLIC]
+                      (search bar in header on EVERY /quote/** page →
+                       autocomplete dropdown, navigates to /quote/[service])
 /quote/[service]   → product list for one service category             [PUBLIC]
 /quote/cart        → review cart, qty controls, remove items           [PUBLIC]
                       Checkout button → centered modal w/ 2 options:
@@ -136,6 +138,26 @@ notification_recipients (
   duplicate column-A values in the sheet. See [lib/google-sheets.ts](lib/google-sheets.ts).
 - Service hero image = first product (by sheet row order) in that
   service section, taking its column-I image.
+- **Catalog cache: 5-min TTL with refresh-bypass.** `getProducts()` in
+  [lib/google-sheets.ts](lib/google-sheets.ts) is wrapped in
+  `unstable_cache` (tag: `"catalog"`, `revalidate: 300`). Normal link
+  clicks hit the cached snapshot — fast, no Sheets API call. But the
+  wrapper first checks request headers via `isBrowserRefresh()`: if
+  the browser sent `Cache-Control: max-age=0` or `no-cache` (i.e. the
+  user hit Cmd/Ctrl+R or the browser refresh button), we bypass the
+  cache, refetch from Sheets, and fire
+  `revalidateTag("catalog", { expire: 0 })` so the next normal request
+  by any other user also gets the fresh snapshot instead of a stale
+  one. Net effect: refresh = always fresh; never-refreshing users get
+  fresh-within-5-minutes as a backstop.
+- **Solar panels are a special-case**: for rows where `subService === "Panels"`,
+  column C contains the panel **wattage** (a number, e.g. `445`), and
+  column F is the price PER WATT (e.g. `$0.38`). [lib/google-sheets.ts](lib/google-sheets.ts)
+  multiplies `minPrice`/`maxPrice` by the wattage at parse time and
+  nulls out `unit`, so every downstream consumer (catalog row, cart,
+  invoice total, submitted-quote total, admin email) sees the
+  per-panel total. Don't restore the `/watt` display — the math
+  upstream already burned the wattage in.
 
 ## Email & notifications
 
@@ -229,6 +251,17 @@ is separate — get it from Supabase Dashboard → Settings → API.)
    draft → submitted transition happens once; subsequent updates (e.g.
    adding notes) update the same row's `notes` column in-place.
 
+   **Cart localStorage is NOT cleared on submit.** Submitting saves the
+   quote to the DB but leaves `instant-quote:estimate:v4`,
+   `:answers:v1`, and `:fulfillment:v1` untouched so the user can keep
+   browsing / revising. The cart is only cleared when the user taps
+   **Pay now** on the invoice (see `clearCartForCheckout` in
+   `questions-form.tsx`). The cart-badge listener (`estimate-change`
+   event) keeps the header in sync. Implication: re-tapping Checkout
+   from `/quote/cart` after a submit will create a NEW draft and a NEW
+   submitted quote — that's intentional (the prior submission is
+   already saved in history).
+
 6. **Fulfillment = "delivery" skips questions.** `questions-form.tsx`
    reads fulfillment from localStorage on mount; if it's "delivery" it
    auto-submits with empty answers and goes straight to the invoice.
@@ -239,6 +272,32 @@ is separate — get it from Supabase Dashboard → Settings → API.)
    click the verification link. EXCEPT — if their email already exists
    in `auth.users` from another app, signUp silently no-ops and they
    can log in immediately with their existing password.
+
+8. **Pricing-notice popup on the invoice is dismiss-only via "Got it".**
+   After submit, `questions-form.tsx` shows a modal asking users to add
+   notes for any pricing concerns. The invoice is rendered behind it with
+   a light dim (`bg-slate-900/20`, no blur) so it's visible, but the
+   fixed full-screen backdrop intercepts pointer events — every feature
+   underneath is disabled until the user clicks **Got it**. There is no
+   backdrop-click and no ESC handler by design. Body scroll is locked
+   while the popup is open. State: `pricingNoticeDismissed`.
+
+   The **Pay now** button on the invoice opens a separate centered
+   modal (`showPayOptions`) with the payment options. It's a modal —
+   NOT an inline panel that replaces the button — because the invoice
+   can grow long and an inline panel at the bottom of the page would
+   render off-screen on tap. Both popups share the body-scroll lock
+   `useEffect` keyed on `showPricingNotice || showPayOptions`.
+
+9. **Questionnaire fees are SOLAR-ONLY today** and computed server-side
+   in `submitQuote` via `computeQuestionnaireCharges`. The per-question
+   charge is a deterministic djb2-hash-derived $10–$100 per answered
+   question (so the same answer always yields the same fee). The set of
+   fee-eligible services is `FEE_ELIGIBLE_SETS = {"solar"}` in
+   `lib/questions.ts` — extend that set to enable fees for other
+   services, or rip out the import + charge block in `submitQuote` /
+   `notifyInvoiceSubmitted` / the history detail page when the model
+   goes away.
 
 ## Things not built yet
 

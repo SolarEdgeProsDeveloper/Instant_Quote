@@ -2,6 +2,10 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { notifyInvoiceSubmitted } from "@/lib/notifications";
+import {
+  computeQuestionnaireCharges,
+  totalQuestionnaireFee,
+} from "@/lib/questions";
 
 export type CartProduct = {
   id: string;
@@ -171,8 +175,20 @@ export async function submitQuote(input: {
   fulfillment?: Fulfillment | null;
 }): Promise<{ id: string }> {
   const { supabase, user } = await requireUser();
-  const { total_min, total_max } = totalsOf(input.products);
+  const { total_min: products_total_min, total_max: products_total_max } =
+    totalsOf(input.products);
   const fulfillment = input.fulfillment ?? null;
+
+  // TEMPORARY: add $10 per answered Solar question to the invoice total.
+  // Computed server-side so we trust the value we store. When this charging
+  // model goes away, delete the import + this block.
+  const serviceNames = Array.from(
+    new Set(input.products.map((p) => p.service)),
+  );
+  const charges = computeQuestionnaireCharges(serviceNames, input.answers);
+  const questionnaireFee = totalQuestionnaireFee(charges);
+  const total_min = products_total_min + questionnaireFee;
+  const total_max = products_total_max + questionnaireFee;
 
   // If a draft exists, flip it to submitted with final values.
   const { data: existing, error: lookupError } = await supabase
@@ -226,6 +242,7 @@ export async function submitQuote(input: {
     quoteId,
     userEmail: user.email ?? null,
     products: input.products,
+    answers: input.answers,
     totalMin: total_min,
   }).catch((err) => {
     console.error("[submitQuote] notify failed:", err);

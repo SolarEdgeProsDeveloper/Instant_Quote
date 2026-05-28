@@ -7,13 +7,16 @@ import {
   type FileMeta,
 } from "@/app/actions/quote";
 import {
+  computeQuestionnaireCharges,
   getQuestionsForService,
+  totalQuestionnaireFee,
   type Question,
 } from "@/lib/questions";
 import { getStyleForService } from "@/lib/service-style";
 import { PriceRange } from "../../price-display";
 import CartBadge from "../../cart-badge";
 import SignOutButton from "../../signout-button";
+import ProductSearch from "../../product-search";
 import FileAttachment from "./file-attachment";
 
 export default async function QuoteDetailPage({
@@ -40,17 +43,28 @@ export default async function QuoteDetailPage({
     byService.set(p.service, arr);
   }
 
+  // TEMPORARY questionnaire charges — recomputed from saved answers so we
+  // can show the breakdown that produced the stored total.
+  const questionnaireCharges = computeQuestionnaireCharges(
+    Array.from(byService.keys()),
+    quote.answers,
+  );
+  const questionnaireFee = totalQuestionnaireFee(questionnaireCharges);
+
   return (
     <main className="flex flex-1 flex-col">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-6 py-4 sm:flex-nowrap sm:gap-4">
           <Link
             href="/quote"
             className="text-lg font-semibold tracking-tight text-slate-900"
           >
             Instant Quote
           </Link>
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="order-3 w-full sm:order-2 sm:w-auto sm:flex-1">
+            <ProductSearch />
+          </div>
+          <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0 sm:gap-4">
             <Link
               href="/quote/history"
               className="hidden text-sm font-medium text-indigo-600 hover:text-indigo-500 sm:block"
@@ -203,6 +217,52 @@ export default async function QuoteDetailPage({
           })}
         </div>
 
+        {questionnaireCharges.length > 0 && (
+          <article className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 bg-slate-50 px-6 py-4 sm:px-8">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-700">
+                Cost added by questionnaire
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {formatPrice(questionnaireFee)} total
+              </p>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {questionnaireCharges.map((c) => {
+                const note = quote.notes[c.noteKey];
+                return (
+                  <li key={c.noteKey} className="px-6 py-3 sm:px-8">
+                    <div className="flex items-baseline justify-between gap-4 text-sm">
+                      <span className="text-slate-800">{c.question.label}</span>
+                      <span className="shrink-0 tabular-nums font-medium text-slate-900">
+                        {formatPrice(c.charge)}
+                      </span>
+                    </div>
+                    {summarizeAnswer(c.question, c.answer) && (
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        <span className="font-semibold not-italic text-slate-700">
+                          Answer:
+                        </span>{" "}
+                        <span className="italic">
+                          {summarizeAnswer(c.question, c.answer)}
+                        </span>
+                      </p>
+                    )}
+                    {note && (
+                      <div className="mt-1 ml-4 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs italic text-amber-900">
+                        <span aria-hidden="true" className="not-italic text-amber-700">
+                          ✎
+                        </span>
+                        <span className="min-w-0 flex-1">{note}</span>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </article>
+        )}
+
         <div className="mt-10 text-center">
           <Link
             href="/quote"
@@ -245,6 +305,23 @@ function AnswerDisplay({
   }
 
   return <span className="whitespace-pre-wrap">{String(value)}</span>;
+}
+
+function summarizeAnswer(q: Question, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (q.type === "file") {
+    const files = Array.isArray(value) ? value : [];
+    if (files.length === 0) return "";
+    return files.length === 1
+      ? "1 file uploaded"
+      : `${files.length} files uploaded`;
+  }
+  if (q.type === "multi-choice" && Array.isArray(value)) {
+    return (value as string[]).join(", ");
+  }
+  if (q.type === "boolean") return value ? "Yes" : "No";
+  const text = String(value).trim();
+  return text.length > 120 ? `${text.slice(0, 117)}…` : text;
 }
 
 function isAnswered(value: unknown): boolean {
