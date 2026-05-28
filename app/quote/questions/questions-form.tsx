@@ -777,7 +777,11 @@ export default function QuestionsForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+            // min-w pins the size so "Submit for estimate" → "Submitting…"
+            // doesn't shrink the button. Safari otherwise leaves a paint
+            // ghost on the left strip that vacated (sticky + backdrop-blur
+            // ancestor failing to repaint).
+            className="min-w-[200px] rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? "Submitting…" : "Submit for estimate"}
           </button>
