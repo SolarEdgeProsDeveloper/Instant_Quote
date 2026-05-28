@@ -1,5 +1,6 @@
 import { google } from "googleapis";
-import { unstable_cache } from "next/cache";
+import { unstable_cache, revalidateTag } from "next/cache";
+import { headers } from "next/headers";
 
 const CATALOG_SHEET_ID =
   process.env.CATALOG_SHEET_ID ?? "15icsefQCXW39db3PzNqNT7Y1YUxmnG-jqEAParr5eMc";
@@ -52,7 +53,7 @@ function parseNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-async function fetchProducts(): Promise<Product[]> {
+async function fetchProductsFromSheet(): Promise<Product[]> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
@@ -81,14 +82,33 @@ async function fetchProducts(): Promise<Product[]> {
 
     const rawImage = row[9] ? String(row[9]).trim() : "";
 
+    let unit = row[2] ? String(row[2]).trim() : null;
+    const subService = row[4] ? String(row[4]).trim() : null;
+    let minPrice = parseNumber(row[5]);
+    let maxPrice = parseNumber(row[6]);
+
+    // Solar panels: column C carries the panel wattage (e.g. "445"), and
+    // column F is the price PER WATT. Multiply through here so every
+    // downstream consumer (cart total, submitted quote total, invoice
+    // breakdown, email) sees the per-panel price. Null the unit so the UI
+    // stops rendering a "/watt" suffix.
+    if (subService && subService.toLowerCase() === "panels") {
+      const wattage = parseNumber(unit);
+      if (wattage != null && wattage > 0) {
+        if (minPrice != null) minPrice = minPrice * wattage;
+        if (maxPrice != null) maxPrice = maxPrice * wattage;
+        unit = null;
+      }
+    }
+
     products.push({
       id,
       name,
-      unit: row[2] ? String(row[2]).trim() : null,
+      unit,
       service,
-      subService: row[4] ? String(row[4]).trim() : null,
-      minPrice: parseNumber(row[5]),
-      maxPrice: parseNumber(row[6]),
+      subService,
+      minPrice,
+      maxPrice,
       imageUrl: rawImage || null,
     });
   }
@@ -96,10 +116,50 @@ async function fetchProducts(): Promise<Product[]> {
   return products;
 }
 
-export const getProducts = unstable_cache(fetchProducts, ["products-all"], {
-  revalidate: 30,
-  tags: ["catalog"],
-});
+const CATALOG_TTL_SECONDS = 5 * 60; // 5-minute backstop if the user never refreshes
+
+const cachedProducts = unstable_cache(
+  fetchProductsFromSheet,
+  ["products-all"],
+  { revalidate: CATALOG_TTL_SECONDS, tags: ["catalog"] },
+);
+
+/**
+ * Browsers send `Cache-Control: max-age=0` on a normal refresh
+ * (Cmd/Ctrl+R) and `no-cache` on a hard refresh (Cmd/Ctrl+Shift+R),
+ * but not on regular link navigation. Use that as the signal that the
+ * user wants fresh data RIGHT NOW.
+ */
+async function isBrowserRefresh(): Promise<boolean> {
+  try {
+    const h = await headers();
+    const cc = h.get("cache-control") || "";
+    const pragma = h.get("pragma") || "";
+    return (
+      cc.includes("no-cache") ||
+      cc.includes("max-age=0") ||
+      pragma === "no-cache"
+    );
+  } catch {
+    // headers() throws outside a request scope (e.g. at build time).
+    return false;
+  }
+}
+
+/**
+ * Catalog read used by every page.
+ *  - Normal navigation → returns the cached snapshot (≤ 5 min old).
+ *  - Browser refresh → bypasses the cache to refetch fresh from Sheets
+ *    AND invalidates the cache tag so any OTHER user landing right
+ *    after also sees the fresh data instead of the stale snapshot.
+ */
+export async function getProducts(): Promise<Product[]> {
+  if (await isBrowserRefresh()) {
+    revalidateTag("catalog", { expire: 0 });
+    return fetchProductsFromSheet();
+  }
+  return cachedProducts();
+}
 
 export async function getServices(): Promise<ServiceItem[]> {
   const products = await getProducts();

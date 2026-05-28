@@ -1,6 +1,11 @@
 import { sendEmail, type EmailRecipient } from "./email";
 import { getSupabaseAdminClient } from "./supabase/admin";
-import type { CartProduct } from "@/app/actions/quote";
+import type { Answers, CartProduct } from "@/app/actions/quote";
+import {
+  computeQuestionnaireCharges,
+  totalQuestionnaireFee,
+  type Question,
+} from "./questions";
 
 /**
  * Pulls active notification recipients from the database. Returns an empty
@@ -56,6 +61,24 @@ function qtyOf(p: { quantity?: number }): number {
   return Number.isFinite(q) && q > 0 ? Math.floor(q) : 1;
 }
 
+/** Plain-text version of the user's answer for inclusion in HTML email. */
+function summarizeAnswerForEmail(q: Question, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (q.type === "file") {
+    const files = Array.isArray(value) ? value : [];
+    if (files.length === 0) return "";
+    return files.length === 1
+      ? "1 file uploaded"
+      : `${files.length} files uploaded`;
+  }
+  if (q.type === "multi-choice" && Array.isArray(value)) {
+    return (value as string[]).join(", ");
+  }
+  if (q.type === "boolean") return value ? "Yes" : "No";
+  const text = String(value).trim();
+  return text.length > 200 ? `${text.slice(0, 197)}…` : text;
+}
+
 /**
  * Notify the admin email that a new user just signed up.
  * Silently no-ops if ADMIN_NOTIFY_EMAIL is unset (so missing config never
@@ -106,6 +129,7 @@ export async function notifyInvoiceSubmitted(args: {
   quoteId: string;
   userEmail: string | null;
   products: CartProduct[];
+  answers: Answers;
   totalMin: number;
 }): Promise<void> {
   const to = await fetchAdminRecipients();
@@ -118,7 +142,18 @@ export async function notifyInvoiceSubmitted(args: {
 
   const shortId = args.quoteId.replace(/-/g, "").slice(0, 8).toUpperCase();
 
-  const rows = args.products
+  // Reproduce the same breakdown the user sees on the invoice.
+  const productsSubtotal = args.products.reduce(
+    (s, p) => s + (p.minPrice ?? 0) * qtyOf(p),
+    0,
+  );
+  const serviceNames = Array.from(
+    new Set(args.products.map((p) => p.service)),
+  );
+  const charges = computeQuestionnaireCharges(serviceNames, args.answers);
+  const questionnaireFee = totalQuestionnaireFee(charges);
+
+  const productRows = args.products
     .map((p) => {
       const q = qtyOf(p);
       const lineTotal = (p.minPrice ?? 0) * q;
@@ -133,6 +168,39 @@ export async function notifyInvoiceSubmitted(args: {
     })
     .join("");
 
+  const chargeRows = charges
+    .map((c) => {
+      const summary = summarizeAnswerForEmail(c.question, c.answer);
+      return `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0;">
+            <div>${escapeHtml(c.question.label)}</div>
+            ${
+              summary
+                ? `<div style="margin-top: 2px; color: #64748b; font-size: 12px; font-style: italic;">Your answer: ${escapeHtml(summary)}</div>`
+                : ""
+            }
+          </td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">${fmtPrice(c.charge)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const breakdownRows =
+    charges.length > 0
+      ? `
+        <tr>
+          <td style="padding: 4px 12px; color: #475569;">Products subtotal</td>
+          <td style="padding: 4px 12px; text-align: right; color: #475569; font-variant-numeric: tabular-nums;">${fmtPrice(productsSubtotal)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 12px; color: #475569;">Questionnaire fees</td>
+          <td style="padding: 4px 12px; text-align: right; color: #475569; font-variant-numeric: tabular-nums;">${fmtPrice(questionnaireFee)}</td>
+        </tr>
+      `
+      : "";
+
   const html = `
     <div style="font-family: system-ui, -apple-system, sans-serif; color: #0f172a; max-width: 640px;">
       <h2 style="margin: 0 0 6px;">New Instant Quote estimate</h2>
@@ -140,7 +208,8 @@ export async function notifyInvoiceSubmitted(args: {
         ${args.userEmail ? escapeHtml(args.userEmail) : "A user"} just submitted estimate <strong>#${shortId}</strong>.
       </p>
 
-      <table style="width: 100%; border-collapse: collapse; margin-top: 8px;">
+      <h3 style="margin: 24px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569;">Items</h3>
+      <table style="width: 100%; border-collapse: collapse;">
         <thead>
           <tr style="background: #f1f5f9;">
             <th style="text-align: left; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">Item</th>
@@ -149,15 +218,32 @@ export async function notifyInvoiceSubmitted(args: {
             <th style="text-align: right; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">Amount</th>
           </tr>
         </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="padding: 12px; border-top: 2px solid #0f172a; text-align: right; font-weight: 700;">Total</td>
-            <td style="padding: 12px; border-top: 2px solid #0f172a; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 16px;">${fmtPrice(args.totalMin)}</td>
-          </tr>
-        </tfoot>
+        <tbody>${productRows}</tbody>
+      </table>
+
+      ${
+        charges.length > 0
+          ? `
+        <h3 style="margin: 24px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569;">Cost added by questionnaire</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f1f5f9;">
+              <th style="text-align: left; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">Question</th>
+              <th style="text-align: right; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569;">Charge</th>
+            </tr>
+          </thead>
+          <tbody>${chargeRows}</tbody>
+        </table>
+      `
+          : ""
+      }
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 24px; font-size: 13px;">
+        ${breakdownRows}
+        <tr>
+          <td style="padding: 12px; border-top: 2px solid #0f172a; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Total</td>
+          <td style="padding: 12px; border-top: 2px solid #0f172a; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 18px;">${fmtPrice(args.totalMin)}</td>
+        </tr>
       </table>
     </div>
   `;

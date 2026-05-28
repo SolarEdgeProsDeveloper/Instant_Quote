@@ -1024,3 +1024,112 @@ export function getQuestionsForService(
   }
   return null;
 }
+
+/**
+ * Is this question required? Default rule: every non-file question is
+ * required. File uploads are always optional. Individual questions can
+ * override either way by setting `required: true` or `required: false`
+ * explicitly on the question definition.
+ */
+export function isQuestionRequired(q: Question): boolean {
+  if (q.required === false) return false;
+  if (q.required === true) return true;
+  return q.type !== "file";
+}
+
+// ── TEMPORARY: questionnaire-derived charges ────────────────────────────────
+// Each answered Solar question currently adds $10 to the invoice. This is a
+// placeholder pricing model — change the fee, the eligible services, or
+// delete this whole block when the real pricing logic lands.
+
+/**
+ * Each answered question contributes a charge in this range (inclusive).
+ * The exact amount is deterministic per question — generated from the
+ * question id so the same question always produces the same value, but
+ * different questions get visibly different amounts.
+ */
+const QUESTIONNAIRE_FEE_MIN = 10;
+const QUESTIONNAIRE_FEE_MAX = 100;
+
+/** Hash any string to an unsigned 32-bit int (djb2). */
+function hashString(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+/** Deterministic "random" charge in [MIN, MAX] for a given question. */
+export function chargeForQuestion(question: Question): number {
+  const range = QUESTIONNAIRE_FEE_MAX - QUESTIONNAIRE_FEE_MIN + 1;
+  const hash = hashString(`${question.id}:${question.label}`);
+  return QUESTIONNAIRE_FEE_MIN + (hash % range);
+}
+
+/** Which question-set keys' answers actually generate invoice line items. */
+const FEE_ELIGIBLE_SETS = new Set(["solar"]);
+
+export type QuestionnaireCharge = {
+  serviceName: string;
+  serviceSlug: string;
+  question: Question;
+  answer: unknown;
+  charge: number;
+  /** Key used in the quote's `notes` jsonb for any note attached to this charge. */
+  noteKey: string;
+};
+
+function slugifyServiceName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function isAnsweredValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.length > 0;
+  return false;
+}
+
+/**
+ * For each fee-eligible service in `serviceNames`, return one line item per
+ * answered question. Currently only Solar's answered questions generate
+ * charges; questions on other services are still asked but don't affect the
+ * invoice.
+ */
+export function computeQuestionnaireCharges(
+  serviceNames: string[],
+  answers: Record<string, unknown>,
+): QuestionnaireCharge[] {
+  const charges: QuestionnaireCharge[] = [];
+  for (const serviceName of serviceNames) {
+    const set = getQuestionsForService(serviceName);
+    if (!set || !FEE_ELIGIBLE_SETS.has(set.key)) continue;
+    const slug = slugifyServiceName(serviceName);
+    for (const section of set.sections) {
+      for (const q of section.questions) {
+        const value = answers[`${slug}.${q.id}`];
+        if (!isAnsweredValue(value)) continue;
+        charges.push({
+          serviceName,
+          serviceSlug: slug,
+          question: q,
+          answer: value,
+          charge: chargeForQuestion(q),
+          noteKey: `q:${slug}.${q.id}`,
+        });
+      }
+    }
+  }
+  return charges;
+}
+
+/** Sum of `charge` across all returned items. */
+export function totalQuestionnaireFee(charges: QuestionnaireCharge[]): number {
+  return charges.reduce((s, c) => s + c.charge, 0);
+}

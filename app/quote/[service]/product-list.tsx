@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ServiceItem } from "@/lib/google-sheets";
 import { getStyleForService } from "@/lib/service-style";
@@ -35,10 +35,28 @@ export default function ProductList({
   products: Product[];
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetProductId = searchParams.get("p");
   const style = getStyleForService(service.name);
 
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  // When the URL carries ?p=<productId> (set by the header search dropdown),
+  // scroll the matching card into view and flash a ring around it so the
+  // user sees where they landed instead of staring at the top of the list.
+  useEffect(() => {
+    if (!targetProductId) return;
+    const el = document.querySelector(
+      `[data-product-id="${CSS.escape(targetProductId)}"]`,
+    );
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightId(targetProductId);
+    const t = setTimeout(() => setHighlightId(null), 2200);
+    return () => clearTimeout(t);
+  }, [targetProductId]);
 
   useEffect(() => {
     try {
@@ -187,15 +205,25 @@ export default function ProductList({
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {products.map((product) => {
               const cartItem = itemById.get(product.id);
+              const isHighlighted = highlightId === product.id;
               return (
-                <ProductCard
+                <div
                   key={product.id}
-                  product={product}
-                  quantity={cartItem ? qtyOf(cartItem) : 0}
-                  onAdd={() => addProduct(product)}
-                  onIncrement={() => changeQty(product.id, 1)}
-                  onDecrement={() => changeQty(product.id, -1)}
-                />
+                  data-product-id={product.id}
+                  className={`rounded-2xl transition-shadow duration-500 ${
+                    isHighlighted
+                      ? "shadow-[0_0_0_4px_rgba(99,102,241,0.5)]"
+                      : ""
+                  }`}
+                >
+                  <ProductCard
+                    product={product}
+                    quantity={cartItem ? qtyOf(cartItem) : 0}
+                    onAdd={() => addProduct(product)}
+                    onIncrement={() => changeQty(product.id, 1)}
+                    onDecrement={() => changeQty(product.id, -1)}
+                  />
+                </div>
               );
             })}
           </div>

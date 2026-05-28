@@ -3,8 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  computeQuestionnaireCharges,
   getQuestionsForService,
+  isQuestionRequired,
+  totalQuestionnaireFee,
   type Question,
+  type QuestionnaireCharge,
   type QuestionSet,
 } from "@/lib/questions";
 import { getStyleForKey } from "@/lib/service-style";
@@ -101,6 +105,22 @@ function isAnswered(q: Question, v: AnswerValue): boolean {
   return false;
 }
 
+/** Compact human-readable rendering of an answer for use in the invoice. */
+function summarizeAnswer(q: Question, value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (q.type === "file") {
+    const files = Array.isArray(value) ? value : [];
+    if (files.length === 0) return "";
+    return files.length === 1 ? "1 file uploaded" : `${files.length} files uploaded`;
+  }
+  if (q.type === "multi-choice" && Array.isArray(value)) {
+    return (value as string[]).join(", ");
+  }
+  if (q.type === "boolean") return value ? "Yes" : "No";
+  const text = String(value).trim();
+  return text.length > 120 ? `${text.slice(0, 117)}…` : text;
+}
+
 function countAnswered(
   serviceSlug: string,
   set: QuestionSet | null,
@@ -128,6 +148,7 @@ export default function QuestionsForm() {
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
+  const [pricingNoticeDismissed, setPricingNoticeDismissed] = useState(false);
 
   useEffect(() => {
     try {
@@ -190,6 +211,16 @@ export default function QuestionsForm() {
     return { count: items.length, min, max };
   }, [items]);
 
+  // TEMPORARY: $10-per-answered-solar-question line items on the invoice.
+  // Recompute on every answer change so the invoice + total are live.
+  const questionnaireCharges: QuestionnaireCharge[] = useMemo(() => {
+    const serviceNames = Array.from(new Set(items.map((i) => i.service)));
+    return computeQuestionnaireCharges(serviceNames, answers);
+  }, [items, answers]);
+
+  const questionnaireFee = totalQuestionnaireFee(questionnaireCharges);
+  const grandTotal = totals.min + questionnaireFee;
+
   const { totalAnswered, totalQuestions } = useMemo(() => {
     let answered = 0;
     let total = 0;
@@ -211,6 +242,18 @@ export default function QuestionsForm() {
 
   function setAnswer(key: string, value: AnswerValue) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function clearCartForCheckout() {
+    try {
+      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(ANSWERS_KEY);
+      window.localStorage.removeItem(FULFILLMENT_KEY);
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new Event("estimate-change"));
+    setShowPayOptions(true);
   }
 
   async function saveNote(productId: string, text: string) {
@@ -240,14 +283,9 @@ export default function QuestionsForm() {
         fulfillment,
       });
 
-      try {
-        window.localStorage.removeItem(STORAGE_KEY);
-        window.localStorage.removeItem(ANSWERS_KEY);
-        window.localStorage.removeItem(FULFILLMENT_KEY);
-      } catch {
-        // ignore
-      }
-      window.dispatchEvent(new Event("estimate-change"));
+      // Cart intentionally NOT cleared here — the estimate is still
+      // editable in the user's mind until they commit to pay. Clearing
+      // happens when Pay now is tapped (see clearCartForCheckout).
 
       setSubmitId(id);
       setSubmitted(true);
@@ -281,7 +319,7 @@ export default function QuestionsForm() {
       if (!group.set) continue;
       for (const section of group.set.sections) {
         for (const q of section.questions) {
-          if (!q.required) continue;
+          if (!isQuestionRequired(q)) continue;
           const value = answers[`${group.slug}.${q.id}`] ?? null;
           if (!isAnswered(q, value)) {
             setSubmitError(
@@ -318,6 +356,19 @@ export default function QuestionsForm() {
     void runSubmit({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, fulfillment, items.length, submitted]);
+
+  // Pop-up shown automatically the first time the invoice is rendered.
+  // Locks page scroll while open; explicit Got-it required to dismiss
+  // (no backdrop click, no Esc).
+  const showPricingNotice = submitted && !pricingNoticeDismissed;
+  useEffect(() => {
+    if (!showPricingNotice && !showPayOptions) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [showPricingNotice, showPayOptions]);
 
   if (!hydrated) {
     return (
@@ -373,6 +424,7 @@ export default function QuestionsForm() {
     const shortId = (submitId ?? "").replace(/-/g, "").slice(0, 8).toUpperCase();
 
     return (
+      <>
       <section
         ref={(el) => {
           // Belt-and-suspenders: even if window.scrollTo failed (smooth-scroll
@@ -380,69 +432,65 @@ export default function QuestionsForm() {
           // actual element guarantees it ends up in view.
           el?.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" });
         }}
-        className="mx-auto w-full max-w-3xl flex-1 px-6 py-12"
+        className="mx-auto w-full max-w-3xl flex-1 px-6 py-6"
       >
         {/* Confirmation banner */}
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+        <div className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
             ✓
           </div>
-          <div>
-            <p className="font-semibold text-emerald-900">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-emerald-900">
               Your estimate is ready.
             </p>
-            <p className="text-sm text-emerald-800">
+            <p className="text-xs text-emerald-800">
               Add a note to any item if you have questions about it.
             </p>
           </div>
         </div>
 
         {/* Invoice */}
-        <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {/* Header */}
-          <div className="border-b border-slate-200 px-6 py-5">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-lg font-bold tracking-tight text-slate-900">
-                  Instant Quote
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
+            <p className="text-base font-bold tracking-tight text-slate-900">
+              Instant Quote
+            </p>
+            {shortId && (
+              <div className="text-right leading-tight">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                  Estimate no.
+                </p>
+                <p className="font-mono text-sm font-semibold text-slate-900">
+                  #{shortId}
                 </p>
               </div>
-              {shortId && (
-                <div className="text-right">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                    Estimate no.
-                  </p>
-                  <p className="mt-0.5 font-mono text-sm font-semibold text-slate-900">
-                    #{shortId}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Line items */}
-          <div className="px-6 py-5">
-            <div className="grid grid-cols-[minmax(0,1fr)_3rem_6.5rem] gap-x-4 border-b border-slate-300 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          <div className="px-5 py-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_3rem_6.5rem] gap-x-4 border-b border-slate-300 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
               <span>Item</span>
               <span className="text-right">Qty</span>
               <span className="text-right">Amount</span>
             </div>
 
-            <div className="mt-3 space-y-4">
+            <div className="mt-2 space-y-3">
               {grouped.map((g) => (
                 <div key={g.slug}>
-                  <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
+                  <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1 text-[11px] font-semibold uppercase tracking-widest text-slate-700">
                     <span aria-hidden="true">
                       {getStyleForKey(g.set?.key).icon}
                     </span>
                     {g.name}
                   </div>
-                  <ul className="mt-1.5 space-y-2">
+                  <ul className="mt-1 divide-y divide-slate-50">
                     {g.products.map((p) => {
                       const q = qtyOf(p);
                       const lineTotal = (p.minPrice ?? 0) * q;
                       return (
-                        <li key={p.id}>
+                        <li key={p.id} className="py-1">
                           <div className="grid grid-cols-[minmax(0,1fr)_3rem_6.5rem] items-baseline gap-x-4 text-sm">
                             <span className="text-slate-800">{p.name}</span>
                             <span className="text-right tabular-nums text-slate-600">
@@ -467,80 +515,196 @@ export default function QuestionsForm() {
             </div>
           </div>
 
+          {/* Questionnaire fees (TEMPORARY pricing) */}
+          {questionnaireCharges.length > 0 && (
+            <div className="border-t border-slate-200 px-5 py-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] gap-x-4 border-b border-slate-300 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                <span>Cost added by questionnaire</span>
+                <span className="text-right">Charge</span>
+              </div>
+              <ul className="mt-1 divide-y divide-slate-50">
+                {questionnaireCharges.map((c) => {
+                  const summary = summarizeAnswer(c.question, c.answer);
+                  return (
+                    <li key={c.noteKey} className="py-1.5">
+                      <div className="grid grid-cols-[minmax(0,1fr)_6.5rem] items-baseline gap-x-4 text-sm">
+                        <span className="text-slate-800">
+                          {c.question.label}
+                        </span>
+                        <span className="text-right tabular-nums font-medium text-slate-900">
+                          {formatPrice(c.charge)}
+                        </span>
+                      </div>
+                      {summary && (
+                        <p className="ml-3 mt-0.5 text-xs text-slate-500">
+                          <span className="font-semibold not-italic text-slate-700">
+                            Answer:
+                          </span>{" "}
+                          <span className="italic">{summary}</span>
+                        </p>
+                      )}
+                      <NoteRow
+                        productId={c.noteKey}
+                        note={notes[c.noteKey]}
+                        onSave={(text) => saveNote(c.noteKey, text)}
+                        onDelete={() => saveNote(c.noteKey, "")}
+                      />
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {/* Total */}
-          <div className="border-t-2 border-slate-900 px-6 py-4">
+          <div className="border-t-2 border-slate-900 px-5 py-3">
+            {questionnaireCharges.length > 0 && (
+              <div className="mb-1.5 space-y-0.5 text-xs text-slate-600">
+                <div className="flex items-baseline justify-between">
+                  <span>Products subtotal</span>
+                  <span className="tabular-nums">
+                    {formatPrice(totals.min)}
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span>Questionnaire fees</span>
+                  <span className="tabular-nums">
+                    {formatPrice(questionnaireFee)}
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="flex items-baseline justify-between gap-4">
               <p className="text-xs font-semibold uppercase tracking-widest text-slate-900">
                 Total
               </p>
-              <p className="text-right text-2xl font-bold tabular-nums text-slate-900">
-                {formatPrice(totals.min)}
+              <p className="text-right text-xl font-bold tabular-nums text-slate-900">
+                {formatPrice(grandTotal)}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Pay now / payment options */}
+        {/* Pay now */}
         <div className="mt-6">
-          {!showPayOptions ? (
-            <button
-              type="button"
-              onClick={() => setShowPayOptions(true)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-500 sm:w-auto"
-            >
-              Pay now
-              <span aria-hidden="true">→</span>
-            </button>
-          ) : (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-700">
-                  How would you like to pay?
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowPayOptions(false)}
-                  className="text-xs font-medium text-slate-500 hover:text-slate-900"
-                >
-                  Cancel
-                </button>
-              </div>
-              <ul className="mt-3 space-y-2">
-                {PAYMENT_OPTIONS.map((opt) => (
-                  <li key={opt.id}>
-                    <button
-                      type="button"
-                      onClick={() => alert(`${opt.title}: coming soon.`)}
-                      className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
-                    >
-                      <span
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
-                        aria-hidden="true"
-                      >
-                        {opt.icon}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-900">
-                          {opt.title}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-600">
-                          {opt.description}
-                        </p>
-                      </div>
-                      <span
-                        aria-hidden="true"
-                        className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
-                      >
-                        →
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={clearCartForCheckout}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-500 sm:w-auto"
+          >
+            Pay now
+            <span aria-hidden="true">→</span>
+          </button>
         </div>
       </section>
+
+      {showPayOptions && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pay-options-title"
+          onClick={() => setShowPayOptions(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p
+                id="pay-options-title"
+                className="text-xs font-semibold uppercase tracking-widest text-slate-700"
+              >
+                How would you like to pay?
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowPayOptions(false)}
+                className="text-xs font-medium text-slate-500 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+            </div>
+            <ul className="mt-4 space-y-2">
+              {PAYMENT_OPTIONS.map((opt) => (
+                <li key={opt.id}>
+                  <button
+                    type="button"
+                    onClick={() => alert(`${opt.title}: coming soon.`)}
+                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                  >
+                    <span
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
+                      aria-hidden="true"
+                    >
+                      {opt.icon}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {opt.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        {opt.description}
+                      </p>
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
+                    >
+                      →
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {showPricingNotice && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pricing-notice-title"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-slate-900/5 sm:p-7">
+            <div className="flex items-start gap-3">
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-xl"
+                aria-hidden="true"
+              >
+                💬
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="pricing-notice-title"
+                  className="text-base font-semibold text-slate-900"
+                >
+                  Questions about the pricing?
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  If you have any concerns about a line item, tap{" "}
+                  <span className="font-medium text-slate-800">
+                    + Add a note
+                  </span>{" "}
+                  next to it. We&apos;ll get back to you as soon as possible.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPricingNoticeDismissed(true)}
+                className="rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 
@@ -796,11 +960,13 @@ function QuestionField({
   const inputBase =
     "block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100";
 
+  const required = isQuestionRequired(question);
+
   return (
     <div>
       <label className="block text-sm font-medium text-slate-800">
         {question.label}
-        {question.required && <span className="ml-1 text-rose-500">*</span>}
+        {required && <span className="ml-1 text-rose-500">*</span>}
       </label>
       {question.helpText && (
         <p className="mt-1 text-xs text-slate-500">{question.helpText}</p>
@@ -810,7 +976,7 @@ function QuestionField({
         {question.type === "text" && (
           <input
             type="text"
-            required={question.required}
+            required={required}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
             className={inputBase}
@@ -819,7 +985,7 @@ function QuestionField({
 
         {question.type === "textarea" && (
           <textarea
-            required={question.required}
+            required={required}
             rows={3}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
@@ -830,7 +996,7 @@ function QuestionField({
         {question.type === "number" && (
           <input
             type="number"
-            required={question.required}
+            required={required}
             value={value === null || value === undefined ? "" : String(value)}
             onChange={(e) =>
               onChange(e.target.value === "" ? null : Number(e.target.value))
@@ -953,7 +1119,7 @@ function NoteRow({
 
   if (editing) {
     return (
-      <div className="mt-1 ml-4 rounded-md bg-amber-50/60 p-2">
+      <div className="mt-0.5 ml-3 rounded-md bg-amber-50/60 p-2">
         <textarea
           autoFocus
           value={draft}
@@ -984,7 +1150,7 @@ function NoteRow({
 
   if (note) {
     return (
-      <div className="mt-1 ml-4 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs">
+      <div className="mt-0.5 ml-3 flex items-start gap-2 rounded-md bg-amber-50 px-2 py-1 text-xs">
         <span aria-hidden="true" className="text-amber-700">✎</span>
         <p className="min-w-0 flex-1 italic text-amber-900">{note}</p>
         <div className="flex shrink-0 items-center gap-1">
@@ -1012,7 +1178,7 @@ function NoteRow({
     <button
       type="button"
       onClick={startEdit}
-      className="ml-4 mt-0.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-500"
+      className="ml-3 mt-0 text-[11px] font-medium text-indigo-600 hover:text-indigo-500"
     >
       + Add a note
     </button>

@@ -54,8 +54,12 @@ export function PriceRange({
    */
   unit?: string | null;
 }) {
-  const hasMin = min != null && Number.isFinite(min) && min > 0;
-  const hasMax = max != null && Number.isFinite(max) && max > 0;
+  // `>= 0` (not `> 0`) — products priced at $0 (e.g. included extras,
+  // promo items) should display "$0", not fall through to "Price on
+  // request". Empty sheet cells parse to `null`, so the legitimate
+  // unpriced case still shows the fallback.
+  const hasMin = min != null && Number.isFinite(min) && min >= 0;
+  const hasMax = max != null && Number.isFinite(max) && max >= 0;
   if (!hasMin && !hasMax) {
     return <p className="text-xs text-slate-400">Price on request</p>;
   }
