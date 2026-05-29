@@ -3,6 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ServiceItem } from "@/lib/google-sheets";
 import { getStyleForService } from "@/lib/service-style";
@@ -38,6 +39,7 @@ export default function ProductDetail({
   adders: Product[];
   others: Product[];
 }) {
+  const router = useRouter();
   const style = getStyleForService(service.name);
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -134,6 +136,12 @@ export default function ProductDetail({
     const map = new Map<string, EstimateItem>();
     for (const i of items) map.set(i.id, i);
     return map;
+  }, [items]);
+
+  const totals = useMemo(() => {
+    const min = items.reduce((s, i) => s + (i.minPrice ?? 0) * qtyOf(i), 0);
+    const max = items.reduce((s, i) => s + (i.maxPrice ?? 0) * qtyOf(i), 0);
+    return { count: items.length, min, max };
   }, [items]);
 
   function addProduct(p: Product) {
@@ -410,6 +418,38 @@ export default function ProductDetail({
           </section>
         )}
       </section>
+
+      {hydrated && totals.count > 0 && (
+        <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 shadow-[0_-4px_20px_-8px_rgba(15,23,42,0.15)] backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+            <div className="flex items-center gap-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+                {totals.count}{" "}
+                {totals.count === 1 ? "product" : "products"}
+              </p>
+              <PriceRange
+                min={totals.min}
+                max={totals.max}
+                size="bar"
+                layout="inline"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/quote/cart")}
+              className="group inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-500 sm:text-base"
+            >
+              I&apos;m done — Get my estimate
+              <span
+                aria-hidden="true"
+                className="transition-transform group-hover:translate-x-0.5"
+              >
+                →
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
