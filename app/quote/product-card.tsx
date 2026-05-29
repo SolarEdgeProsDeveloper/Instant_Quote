@@ -77,23 +77,23 @@ export function ProductCard({
         )}
       </div>
 
-      <div className={`flex flex-1 flex-col ${compact ? "p-3" : "p-5"}`}>
+      <div className={`flex flex-1 flex-col ${compact ? "p-3" : "p-4"}`}>
         <h3
           className={`font-semibold text-slate-900 ${
             compact
               ? "line-clamp-2 text-xs leading-snug"
-              : "text-base"
+              : "line-clamp-2 text-sm leading-snug"
           }`}
         >
           {product.name}
         </h3>
         {!compact && (product.subService || product.unit) && (
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-0.5 text-[11px] text-slate-500">
             {[product.subService, product.unit].filter(Boolean).join(" · ")}
           </p>
         )}
 
-        <div className={compact ? "mt-2" : "mt-4"}>
+        <div className={compact ? "mt-2" : "mt-3"}>
           <PriceRange
             min={product.minPrice}
             max={product.maxPrice}
@@ -102,7 +102,7 @@ export function ProductCard({
           />
         </div>
 
-        <div className={`relative z-20 mt-auto ${compact ? "pt-2" : "pt-5"}`}>
+        <div className={`relative z-20 mt-auto ${compact ? "pt-2" : "pt-3"}`}>
           {inCart ? (
             <QtySelector
               quantity={quantity}

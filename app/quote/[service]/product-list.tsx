@@ -202,7 +202,7 @@ export default function ProductList({
             No products found for this service yet.
           </div>
         ) : (
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {products.map((product) => {
               const cartItem = itemById.get(product.id);
               const isHighlighted = highlightId === product.id;
