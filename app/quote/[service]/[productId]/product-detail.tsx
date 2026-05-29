@@ -45,6 +45,38 @@ export default function ProductDetail({
   const [expandedFields, setExpandedFields] = useState<Set<string>>(
     () => new Set(),
   );
+  const rightColRef = useRef<HTMLDivElement>(null);
+  const [lockedImageHeight, setLockedImageHeight] = useState<number | null>(
+    null,
+  );
+  // Ref mirror of expandedFields so the resize handler reads the latest
+  // value without re-binding the listener on every toggle.
+  const expandedFieldsRef = useRef(expandedFields);
+  useEffect(() => {
+    expandedFieldsRef.current = expandedFields;
+  }, [expandedFields]);
+
+  // Snapshot the right column's height at first paint — that's the
+  // "initial / all collapsed" height the image should match. Deliberately
+  // NOT re-measuring when expandedFields changes: when the user clicks
+  // Collapse all, the CSS grid-rows transition needs ~200ms to actually
+  // shrink the column. If we measured at that moment we'd capture the
+  // still-expanded height (animation hasn't moved yet) and the image
+  // would jump UP instead of staying put. Window-resize handler re-runs
+  // the measurement only when nothing is open so the lock stays accurate
+  // across viewport changes without getting corrupted by animations.
+  useEffect(() => {
+    if (rightColRef.current) {
+      setLockedImageHeight(rightColRef.current.offsetHeight);
+    }
+    function onResize() {
+      if (rightColRef.current && expandedFieldsRef.current.size === 0) {
+        setLockedImageHeight(rightColRef.current.offsetHeight);
+      }
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   function toggleField(heading: string) {
     setExpandedFields((prev) => {
@@ -153,10 +185,19 @@ export default function ProductDetail({
           Back to {service.name}
         </Link>
 
-        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-2">
-          {/* Image */}
+        <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
+          {/* Image — square on mobile, locked to the right column's initial
+              (all sections collapsed) height on lg+ via --locked-h. The
+              image keeps that height when sections expand, so only the
+              right column grows downward. Fallback `420px` covers the
+              moment before measurement lands. */}
           <div
-            className={`relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br ${style.gradient}`}
+            className={`relative aspect-square overflow-hidden rounded-2xl bg-gradient-to-br ${style.gradient} lg:aspect-auto lg:h-[var(--locked-h,420px)]`}
+            style={
+              lockedImageHeight != null
+                ? ({ "--locked-h": `${lockedImageHeight}px` } as React.CSSProperties)
+                : undefined
+            }
           >
             {showImage && (
               <img
@@ -174,7 +215,7 @@ export default function ProductDetail({
           </div>
 
           {/* Info */}
-          <div className="flex flex-col">
+          <div ref={rightColRef} className="flex flex-col">
             <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
               {service.name}
               {product.subService && ` · ${product.subService}`}
@@ -208,23 +249,23 @@ export default function ProductDetail({
                 )}
               </div>
               {product.detailFields.length > 0 ? (
-                <ul className="mt-3 space-y-2.5">
+                <ul className="mt-3 space-y-1.5">
                   {product.detailFields.map((field) => {
                     const isOpen = expandedFields.has(field.heading);
                     return (
                       <li
                         key={field.heading}
-                        className={`group/item overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 ${
+                        className={`group/item overflow-hidden rounded-lg border bg-white shadow-sm transition-colors duration-200 ${
                           isOpen
-                            ? "border-indigo-200 shadow-md ring-1 ring-indigo-100"
-                            : "border-slate-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                            ? "border-indigo-200 ring-1 ring-indigo-100"
+                            : "border-slate-200 hover:border-slate-300"
                         }`}
                       >
                         <button
                           type="button"
                           onClick={() => toggleField(field.heading)}
                           aria-expanded={isOpen}
-                          className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left text-sm font-semibold transition-colors ${
+                          className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
                             isOpen
                               ? "text-indigo-900"
                               : "text-slate-800 group-hover/item:bg-slate-50/60"
@@ -233,7 +274,7 @@ export default function ProductDetail({
                           <span className="truncate">{field.heading}</span>
                           <span
                             aria-hidden="true"
-                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
                               isOpen
                                 ? "rotate-90 bg-indigo-100 text-indigo-600"
                                 : "bg-slate-100 text-slate-500 group-hover/item:bg-slate-200"
@@ -242,7 +283,7 @@ export default function ProductDetail({
                             <svg
                               viewBox="0 0 20 20"
                               fill="currentColor"
-                              className="h-4 w-4"
+                              className="h-3 w-3"
                             >
                               <path
                                 fillRule="evenodd"
@@ -256,14 +297,14 @@ export default function ProductDetail({
                         {/* Grid-rows trick → smooth height transition without
                             knowing the content height ahead of time. */}
                         <div
-                          className={`grid transition-all duration-300 ease-out ${
+                          className={`grid transition-all duration-200 ease-out ${
                             isOpen
                               ? "grid-rows-[1fr] opacity-100"
                               : "grid-rows-[0fr] opacity-0"
                           }`}
                         >
                           <div className="overflow-hidden">
-                            <div className="border-t border-indigo-100/70 bg-gradient-to-b from-indigo-50/30 to-white px-5 py-4 text-[13.5px] leading-relaxed text-slate-700">
+                            <div className="border-t border-indigo-100/70 px-4 py-2.5 text-[13px] leading-snug text-slate-700">
                               {field.value ? (
                                 <p className="whitespace-pre-wrap">
                                   {field.value}
