@@ -140,6 +140,11 @@ notification_recipients (
   - H: solar bonus (unused here, used in invoice-generator)
   - I: (unused)
   - J: product image URL
+  - L..Q: free-form description fields. Row 1 of these columns holds the
+    section heading (e.g. "Specifications", "Warranty"); each product
+    row's L..Q cells hold the value for that section. Rendered as an
+    accordion on the product detail page — empty cells show "Not
+    provided." once expanded.
 - Cart IDs are NOT column A. We use `r{rowNumber}-{sheetId}` because of
   duplicate column-A values in the sheet. See [lib/google-sheets.ts](lib/google-sheets.ts).
 - Service hero image = first product (by sheet row order) in that

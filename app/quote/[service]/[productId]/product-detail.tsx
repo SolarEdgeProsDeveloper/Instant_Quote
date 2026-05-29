@@ -42,6 +42,30 @@ export default function ProductDetail({
   const [items, setItems] = useState<EstimateItem[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  function toggleField(heading: string) {
+    setExpandedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(heading)) next.delete(heading);
+      else next.add(heading);
+      return next;
+    });
+  }
+
+  const allFieldsExpanded =
+    product.detailFields.length > 0 &&
+    expandedFields.size === product.detailFields.length;
+
+  function toggleAllFields() {
+    setExpandedFields(
+      allFieldsExpanded
+        ? new Set()
+        : new Set(product.detailFields.map((f) => f.heading)),
+    );
+  }
 
   useEffect(() => {
     try {
@@ -169,12 +193,98 @@ export default function ProductDetail({
             </div>
 
             <div className="mt-8">
-              <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                Description
-              </h2>
-              <p className="mt-2 text-sm italic text-slate-400">
-                Description coming soon.
-              </p>
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                  Description
+                </h2>
+                {product.detailFields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllFields}
+                    className="text-xs font-medium text-indigo-600 transition hover:text-indigo-500"
+                  >
+                    {allFieldsExpanded ? "Collapse all" : "Expand all"}
+                  </button>
+                )}
+              </div>
+              {product.detailFields.length > 0 ? (
+                <ul className="mt-3 space-y-2.5">
+                  {product.detailFields.map((field) => {
+                    const isOpen = expandedFields.has(field.heading);
+                    return (
+                      <li
+                        key={field.heading}
+                        className={`group/item overflow-hidden rounded-xl border bg-white shadow-sm transition-all duration-200 ${
+                          isOpen
+                            ? "border-indigo-200 shadow-md ring-1 ring-indigo-100"
+                            : "border-slate-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleField(field.heading)}
+                          aria-expanded={isOpen}
+                          className={`flex w-full items-center justify-between gap-3 px-5 py-4 text-left text-sm font-semibold transition-colors ${
+                            isOpen
+                              ? "text-indigo-900"
+                              : "text-slate-800 group-hover/item:bg-slate-50/60"
+                          }`}
+                        >
+                          <span className="truncate">{field.heading}</span>
+                          <span
+                            aria-hidden="true"
+                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-all duration-300 ${
+                              isOpen
+                                ? "rotate-90 bg-indigo-100 text-indigo-600"
+                                : "bg-slate-100 text-slate-500 group-hover/item:bg-slate-200"
+                            }`}
+                          >
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="h-4 w-4"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </span>
+                        </button>
+
+                        {/* Grid-rows trick → smooth height transition without
+                            knowing the content height ahead of time. */}
+                        <div
+                          className={`grid transition-all duration-300 ease-out ${
+                            isOpen
+                              ? "grid-rows-[1fr] opacity-100"
+                              : "grid-rows-[0fr] opacity-0"
+                          }`}
+                        >
+                          <div className="overflow-hidden">
+                            <div className="border-t border-indigo-100/70 bg-gradient-to-b from-indigo-50/30 to-white px-5 py-4 text-[13.5px] leading-relaxed text-slate-700">
+                              {field.value ? (
+                                <p className="whitespace-pre-wrap">
+                                  {field.value}
+                                </p>
+                              ) : (
+                                <p className="italic text-slate-400">
+                                  Not provided.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm italic text-slate-400">
+                  Description coming soon.
+                </p>
+              )}
             </div>
 
             <div className="mt-auto pt-8">
