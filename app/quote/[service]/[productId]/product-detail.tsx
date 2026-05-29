@@ -375,7 +375,7 @@ export default function ProductDetail({
                 <p className="mt-1 text-sm text-slate-600">
                   Pairs well with {service.name.toLowerCase()}.
                 </p>
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {adders.map((p) => {
                     const ri = itemById.get(p.id);
                     return (
@@ -398,7 +398,7 @@ export default function ProductDetail({
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
                   More in {service.name}
                 </h3>
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {others.map((p) => {
                     const ri = itemById.get(p.id);
                     return (
