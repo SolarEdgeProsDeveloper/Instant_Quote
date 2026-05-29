@@ -21,6 +21,11 @@ function getAuth() {
   });
 }
 
+export type ProductDetailField = {
+  heading: string; // taken from row 1 of column L..Q
+  value: string;   // this row's cell at the same column (may be empty)
+};
+
 export type Product = {
   id: string; // column A
   name: string; // column B
@@ -30,6 +35,10 @@ export type Product = {
   minPrice: number | null; // column F (redline)
   maxPrice: number | null; // column G (cap)
   imageUrl: string | null; // column J (product photo URL)
+  // Free-form description fields sourced from columns L..Q. Each entry
+  // pairs a heading (from row 1) with this product's value at that
+  // column. Rendered as an accordion on the product detail page.
+  detailFields: ProductDetailField[];
 };
 
 export type ServiceItem = {
@@ -53,19 +62,36 @@ function parseNumber(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// 0-indexed positions for the detail columns (L..Q inclusive = 11..16).
+const DETAIL_COL_FIRST = 11;
+const DETAIL_COL_LAST_EXCLUSIVE = 17;
+
 async function fetchProductsFromSheet(): Promise<Product[]> {
   const auth = getAuth();
   const sheets = google.sheets({ version: "v4", auth });
 
+  // Pull A1:Q so we get both the column headers (row 1) AND the detail
+  // columns L..Q. The first row in the response is the heading row.
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: CATALOG_SHEET_ID,
-    range: "All!A2:J",
+    range: "All!A1:Q",
   });
 
   const rows = (res.data.values ?? []) as string[][];
+  if (rows.length === 0) return [];
+
+  // Row 0 = sheet row 1 = column headings. Snapshot the L..Q headings so
+  // every product can pair its detail values back to a label, even if a
+  // particular product has empty cells for some columns.
+  const headerRow = rows[0] ?? [];
+  const detailHeadings = headerRow
+    .slice(DETAIL_COL_FIRST, DETAIL_COL_LAST_EXCLUSIVE)
+    .map((h) => String(h ?? "").trim());
+
   const products: Product[] = [];
 
-  for (let i = 0; i < rows.length; i++) {
+  // Data starts at row index 1 (sheet row 2).
+  for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const sheetId = String(row?.[0] ?? "").trim();
     const name = String(row?.[1] ?? "").trim();
@@ -77,7 +103,7 @@ async function fetchProductsFromSheet(): Promise<Product[]> {
     // against duplicate values in column A — which we've seen in some service
     // sections (e.g. battery) and which caused toggling one product to
     // visually select every row sharing the same column-A value.
-    const rowNumber = i + 2; // header is row 1, data starts at row 2
+    const rowNumber = i + 1; // i is 0-indexed into the fetched range A1:Q
     const id = `r${rowNumber}-${sheetId}`;
 
     const rawImage = row[9] ? String(row[9]).trim() : "";
@@ -101,6 +127,16 @@ async function fetchProductsFromSheet(): Promise<Product[]> {
       }
     }
 
+    // Pair each L..Q heading with this row's value at the same column.
+    // Headings with no label in row 1 are dropped (treated as not real
+    // sections — protects against trailing blank header cells).
+    const detailFields: ProductDetailField[] = detailHeadings
+      .map((heading, idx) => ({
+        heading,
+        value: String(row?.[DETAIL_COL_FIRST + idx] ?? "").trim(),
+      }))
+      .filter((f) => f.heading.length > 0);
+
     products.push({
       id,
       name,
@@ -110,6 +146,7 @@ async function fetchProductsFromSheet(): Promise<Product[]> {
       minPrice,
       maxPrice,
       imageUrl: rawImage || null,
+      detailFields,
     });
   }
 
