@@ -258,3 +258,77 @@ export async function notifyInvoiceSubmitted(args: {
     console.error("[notify] invoice email failed:", err);
   }
 }
+
+/**
+ * Heads-up to admins that a customer just opened a self-serve financing
+ * application on the lender's site (they tapped "Finance with X" → we
+ * redirected them to the lender's hosted apply page). Useful for sales
+ * visibility — they didn't ask for a callback, but you can still reach
+ * out proactively if the deal stalls. Silently no-ops if no recipients.
+ */
+export async function notifyFinancingInquiry(args: {
+  provider: string;
+  userEmail: string | null;
+  quoteId: string;
+  totalMin: number;
+}): Promise<void> {
+  const to = await fetchAdminRecipients();
+  if (to.length === 0) {
+    console.warn(
+      "[notify] no recipients in notification_recipients — skipping financing email",
+    );
+    return;
+  }
+
+  const shortId = args.quoteId.replace(/-/g, "").slice(0, 8).toUpperCase();
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, sans-serif; color: #0f172a; max-width: 560px;">
+      <h2 style="margin: 0 0 6px;">${escapeHtml(args.provider)} application started</h2>
+      <p style="margin: 0 0 16px; color: #475569;">
+        ${args.userEmail ? escapeHtml(args.userEmail) : "A customer"} just opened the
+        <strong>${escapeHtml(args.provider)}</strong> application page for estimate
+        <strong>#${shortId}</strong>. They're completing the application on the lender's site.
+      </p>
+      <table style="border-collapse: collapse; margin-top: 12px;">
+        <tr>
+          <td style="padding: 6px 12px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Lender</td>
+          <td style="padding: 6px 12px; font-weight: 600;">${escapeHtml(args.provider)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Estimate</td>
+          <td style="padding: 6px 12px; font-weight: 600;">#${shortId}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Amount</td>
+          <td style="padding: 6px 12px; font-weight: 600;">${fmtPrice(args.totalMin)}</td>
+        </tr>
+        ${
+          args.userEmail
+            ? `<tr>
+                <td style="padding: 6px 12px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">Customer</td>
+                <td style="padding: 6px 12px;">${escapeHtml(args.userEmail)}</td>
+              </tr>`
+            : ""
+        }
+        <tr>
+          <td style="padding: 6px 12px; color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">When</td>
+          <td style="padding: 6px 12px;">${new Date().toUTCString()}</td>
+        </tr>
+      </table>
+      <p style="margin-top: 20px; font-size: 13px; color: #475569;">
+        No action needed — ${escapeHtml(args.provider)} will reach out directly once they have a decision. Use this as a heads-up only.
+      </p>
+    </div>
+  `;
+
+  try {
+    await sendEmail({
+      to,
+      subject: `${args.provider} application started — #${shortId} — ${args.userEmail ?? "a customer"}`,
+      html,
+    });
+  } catch (err) {
+    console.error("[notify] financing email failed:", err);
+  }
+}

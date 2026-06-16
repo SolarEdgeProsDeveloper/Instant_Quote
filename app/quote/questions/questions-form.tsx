@@ -19,13 +19,24 @@ import {
   type Fulfillment,
   type ProductNotes,
 } from "@/app/actions/quote";
+import { requestFinancing } from "@/app/actions/financing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
 const ANSWERS_KEY = "instant-quote:answers:v1";
 const FULFILLMENT_KEY = "instant-quote:fulfillment:v1";
 
-const PAYMENT_OPTIONS = [
+type PaymentOption = {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  // When `financing` is set, clicking the option calls requestFinancing()
+  // with that provider instead of the "coming soon" placeholder.
+  financing?: "synchrony" | "sungage";
+};
+
+const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "pay-now",
     icon: "💳",
@@ -33,22 +44,26 @@ const PAYMENT_OPTIONS = [
     description: "Pay the full amount now, processed instantly.",
   },
   {
-    id: "financing",
-    icon: "📅",
-    title: "Financing",
-    description: "0–12 months, low or no interest.",
+    id: "synchrony",
+    icon: "🏦",
+    title: "Finance with Synchrony",
+    description:
+      "Monthly payments with low or no interest. Opens Synchrony's secure application in a new tab.",
+    financing: "synchrony",
+  },
+  {
+    id: "sungage",
+    icon: "☀️",
+    title: "Finance with Sungage",
+    description:
+      "Solar-specific financing with long-term low-rate options. Opens Sungage's secure application in a new tab.",
+    financing: "sungage",
   },
   {
     id: "cash",
     icon: "💵",
     title: "Cash",
     description: "Pay in person on install day.",
-  },
-  {
-    id: "loan",
-    icon: "🏦",
-    title: "Loan",
-    description: "Apply through our lending partners.",
   },
 ];
 
@@ -147,6 +162,40 @@ export default function QuestionsForm() {
   const [submitId, setSubmitId] = useState<string | null>(null);
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
+
+  function handlePaymentOptionClick(opt: PaymentOption) {
+    if (opt.financing) {
+      const url =
+        opt.financing === "synchrony"
+          ? process.env.NEXT_PUBLIC_SYNCHRONY_APPLY_URL
+          : process.env.NEXT_PUBLIC_SUNGAGE_APPLY_URL;
+
+      if (!url) {
+        alert(
+          `${opt.title} isn't set up yet — please reach out to us directly to get started with this lender.`,
+        );
+        return;
+      }
+
+      // Open synchronously inside the click handler so the popup blocker
+      // doesn't fire. Once the tab is open, async-fire a notification so
+      // your sales team has visibility into who's mid-application.
+      window.open(url, "_blank", "noopener,noreferrer");
+      setShowPayOptions(false);
+
+      if (submitId) {
+        requestFinancing({
+          provider: opt.financing,
+          quoteId: submitId,
+          totalMin: grandTotal,
+        }).catch((err) => {
+          console.warn("[financing] notify failed:", err);
+        });
+      }
+      return;
+    }
+    alert(`${opt.title}: coming soon.`);
+  }
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
   const [pricingNoticeDismissed, setPricingNoticeDismissed] = useState(false);
 
@@ -630,7 +679,7 @@ export default function QuestionsForm() {
                 <li key={opt.id}>
                   <button
                     type="button"
-                    onClick={() => alert(`${opt.title}: coming soon.`)}
+                    onClick={() => handlePaymentOptionClick(opt)}
                     className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
                   >
                     <span
