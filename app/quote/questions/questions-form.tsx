@@ -19,7 +19,10 @@ import {
   type Fulfillment,
   type ProductNotes,
 } from "@/app/actions/quote";
-import { requestFinancing } from "@/app/actions/financing";
+import {
+  requestFinancing,
+  startSynchronyApplication,
+} from "@/app/actions/financing";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
@@ -162,39 +165,60 @@ export default function QuestionsForm() {
   const [submitId, setSubmitId] = useState<string | null>(null);
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
+  const [financingError, setFinancingError] = useState<string | null>(null);
+  const [financingPending, setFinancingPending] = useState<string | null>(null);
 
-  function handlePaymentOptionClick(opt: PaymentOption) {
-    if (opt.financing) {
-      const url =
-        opt.financing === "synchrony"
-          ? process.env.NEXT_PUBLIC_SYNCHRONY_APPLY_URL
-          : process.env.NEXT_PUBLIC_SUNGAGE_APPLY_URL;
+  async function handlePaymentOptionClick(opt: PaymentOption) {
+    if (!opt.financing) {
+      alert(`${opt.title}: coming soon.`);
+      return;
+    }
 
+    // Sungage: simple hosted redirect via env-configured URL.
+    if (opt.financing === "sungage") {
+      const url = process.env.NEXT_PUBLIC_SUNGAGE_APPLY_URL;
       if (!url) {
         alert(
           `${opt.title} isn't set up yet — please reach out to us directly to get started with this lender.`,
         );
         return;
       }
-
-      // Open synchronously inside the click handler so the popup blocker
-      // doesn't fire. Once the tab is open, async-fire a notification so
-      // your sales team has visibility into who's mid-application.
       window.open(url, "_blank", "noopener,noreferrer");
       setShowPayOptions(false);
-
       if (submitId) {
         requestFinancing({
           provider: opt.financing,
           quoteId: submitId,
           totalMin: grandTotal,
-        }).catch((err) => {
-          console.warn("[financing] notify failed:", err);
-        });
+        }).catch((err) => console.warn("[financing] notify failed:", err));
       }
       return;
     }
-    alert(`${opt.title}: coming soon.`);
+
+    // Synchrony: call our server action to kick off a prequalification.
+    // The action returns a Synchrony-hosted Apply URL (paylaterRedirection-
+    // Url) — we top-level redirect the customer there so they fill in PII
+    // on Synchrony's site, not ours.
+    if (!submitId) return;
+    setFinancingError(null);
+    setFinancingPending(opt.id);
+    try {
+      const { redirectUrl } = await startSynchronyApplication({
+        quoteId: submitId,
+        purchaseAmount: grandTotal,
+      });
+      // Same-tab redirect because Synchrony will redirect back to our
+      // return page when done.
+      window.location.href = redirectUrl;
+    } catch (err) {
+      console.error("[financing] synchrony failed:", err);
+      setFinancingError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't start the Synchrony application. Please try again or pick a different option.",
+      );
+      setFinancingPending(null);
+    }
   }
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
   const [pricingNoticeDismissed, setPricingNoticeDismissed] = useState(false);
@@ -679,8 +703,9 @@ export default function QuestionsForm() {
                 <li key={opt.id}>
                   <button
                     type="button"
+                    disabled={financingPending !== null}
                     onClick={() => handlePaymentOptionClick(opt)}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
@@ -700,12 +725,17 @@ export default function QuestionsForm() {
                       aria-hidden="true"
                       className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
                     >
-                      →
+                      {financingPending === opt.id ? "…" : "→"}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
+            {financingError && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {financingError}
+              </p>
+            )}
           </div>
         </div>
       )}
