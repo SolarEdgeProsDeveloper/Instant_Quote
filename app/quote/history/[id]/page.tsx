@@ -13,6 +13,7 @@ import {
   type Question,
 } from "@/lib/questions";
 import { getStyleForService } from "@/lib/service-style";
+import { formatQuoteNumber } from "@/lib/quote-number";
 import { PriceRange } from "../../price-display";
 import CartBadge from "../../cart-badge";
 import SignOutButton from "../../signout-button";
@@ -90,9 +91,14 @@ export default async function QuoteDetailPage({
         </Link>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
-            Submitted {formatDate(quote.submitted_at)}
-          </p>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-widest text-slate-500">
+              Submitted {formatDate(quote.submitted_at)}
+            </p>
+            <p className="font-mono text-sm font-semibold text-indigo-700">
+              {formatQuoteNumber(quote.quote_number)}
+            </p>
+          </div>
           <div className="mt-3">
             <PriceRange
               min={quote.total_min}

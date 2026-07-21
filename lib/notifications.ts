@@ -6,6 +6,7 @@ import {
   totalQuestionnaireFee,
   type Question,
 } from "./questions";
+import { formatQuoteNumber } from "./quote-number";
 
 /**
  * Pulls active notification recipients from the database. Returns an empty
@@ -127,6 +128,7 @@ export async function notifyNewSignup(userEmail: string): Promise<void> {
  */
 export async function notifyInvoiceSubmitted(args: {
   quoteId: string;
+  quoteNumber: number;
   userEmail: string | null;
   products: CartProduct[];
   answers: Answers;
@@ -140,7 +142,7 @@ export async function notifyInvoiceSubmitted(args: {
     return;
   }
 
-  const shortId = args.quoteId.replace(/-/g, "").slice(0, 8).toUpperCase();
+  const shortId = formatQuoteNumber(args.quoteNumber);
 
   // Reproduce the same breakdown the user sees on the invoice.
   const productsSubtotal = args.products.reduce(
@@ -205,7 +207,7 @@ export async function notifyInvoiceSubmitted(args: {
     <div style="font-family: system-ui, -apple-system, sans-serif; color: #0f172a; max-width: 640px;">
       <h2 style="margin: 0 0 6px;">New Instant Quote estimate</h2>
       <p style="margin: 0 0 16px; color: #475569;">
-        ${args.userEmail ? escapeHtml(args.userEmail) : "A user"} just submitted estimate <strong>#${shortId}</strong>.
+        ${args.userEmail ? escapeHtml(args.userEmail) : "A user"} just submitted estimate <strong>${shortId}</strong>.
       </p>
 
       <h3 style="margin: 24px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569;">Items</h3>
@@ -251,7 +253,7 @@ export async function notifyInvoiceSubmitted(args: {
   try {
     await sendEmail({
       to,
-      subject: `New estimate #${shortId} from ${args.userEmail ?? "a user"}`,
+      subject: `New estimate ${shortId} from ${args.userEmail ?? "a user"}`,
       html,
     });
   } catch (err) {

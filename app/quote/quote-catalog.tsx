@@ -151,26 +151,26 @@ export default function QuoteCatalog({
 
   return (
     <>
-      <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 pb-32">
+      <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-6 pb-32">
         <div className="max-w-2xl">
-          <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-indigo-600">
             Build your estimate
           </p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
             What can we help you with?
           </h2>
-          <p className="mt-3 text-base text-slate-600">
+          <p className="mt-1.5 text-sm text-slate-600">
             Tap a category to browse products. We&apos;ll only ask questions
             for what you add.
           </p>
         </div>
 
         {services.length === 0 ? (
-          <p className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          <p className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
             No services found in column D of the &quot;All&quot; tab yet.
           </p>
         ) : (
-          <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {services.map((service) => (
               <ServiceCard key={service.id} service={service} hydrated={hydrated} items={items} />
             ))}
@@ -178,21 +178,21 @@ export default function QuoteCatalog({
         )}
 
         {products.length > 0 && (
-          <div className="mt-20">
+          <div className="mt-10">
             <div className="max-w-2xl">
-              <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600">
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-indigo-600">
                 Browse everything
               </p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
                 All products
               </h2>
-              <p className="mt-3 text-base text-slate-600">
+              <p className="mt-1.5 text-sm text-slate-600">
                 Add anything to your estimate without drilling into a
                 category.
               </p>
             </div>
 
-            <div className="mt-10 space-y-10">
+            <div className="mt-5 space-y-6">
               {services.map((service) => {
                 const productsForService =
                   productsByService.get(service.name) ?? [];
@@ -318,7 +318,7 @@ function ServiceCard({
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
     >
       <div
-        className={`relative aspect-[4/3] overflow-hidden bg-gradient-to-br ${style.gradient}`}
+        className={`relative aspect-[16/9] overflow-hidden bg-gradient-to-br ${style.gradient}`}
       >
         {currentSrc && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -334,9 +334,9 @@ function ServiceCard({
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-        <div className="absolute left-4 top-4 flex items-center gap-2">
+        <div className="absolute left-3 top-3 flex items-center gap-2">
           <span
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg backdrop-blur"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-base backdrop-blur"
             aria-hidden="true"
           >
             {style.icon}
@@ -344,27 +344,27 @@ function ServiceCard({
         </div>
 
         {inEstimate > 0 && (
-          <div className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-700 shadow-sm">
+          <div className="absolute right-3 top-3 rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 shadow-sm">
             {inEstimate} in estimate
           </div>
         )}
 
-        <div className="absolute inset-x-0 bottom-0 px-5 pb-4 text-white">
-          <h3 className="text-lg font-semibold leading-tight">
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-3 text-white">
+          <h3 className="text-base font-semibold leading-tight">
             {service.name}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-200">
+          <p className="mt-0.5 text-[11px] text-slate-200">
             {service.productCount}{" "}
             {service.productCount === 1 ? "product" : "products"}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-5">
-        <p className="text-sm text-slate-600">{style.blurb}</p>
+      <div className="flex flex-1 flex-col p-4">
+        <p className="text-xs leading-relaxed text-slate-600">{style.blurb}</p>
 
-        <div className="mt-auto pt-5">
-          <span className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 group-hover:text-indigo-500">
+        <div className="mt-auto pt-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 group-hover:text-indigo-500">
             Browse products
             <span
               aria-hidden="true"

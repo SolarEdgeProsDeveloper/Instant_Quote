@@ -23,11 +23,20 @@ import {
   requestFinancing,
   startSynchronyApplication,
 } from "@/app/actions/financing";
+import { formatQuoteNumber } from "@/lib/quote-number";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
 const ANSWERS_KEY = "instant-quote:answers:v1";
 const FULFILLMENT_KEY = "instant-quote:fulfillment:v1";
+
+// Feature flag: gates the "Finance with Synchrony" option in the Pay-now
+// modal. Flip to `true` once the Synchrony sandbox app is approved
+// (currently Pending) and end-to-end testing succeeds. All server-side
+// integration (server action, JWE helper, webhook receiver, return page)
+// stays wired regardless of this flag — flipping it just makes the
+// button visible to customers again.
+const SYNCHRONY_ENABLED = false;
 
 type PaymentOption = {
   id: string;
@@ -163,6 +172,9 @@ export default function QuestionsForm() {
   const [answers, setAnswers] = useState<Answers>({});
   const [submitted, setSubmitted] = useState(false);
   const [submitId, setSubmitId] = useState<string | null>(null);
+  const [submitQuoteNumber, setSubmitQuoteNumber] = useState<number | null>(
+    null,
+  );
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
   const [financingError, setFinancingError] = useState<string | null>(null);
@@ -318,6 +330,21 @@ export default function QuestionsForm() {
   }
 
   function clearCartForCheckout() {
+    // Pay Now: send the customer straight to Nickel Payments with the
+    // invoice total + a fixed reason string as query params. The old
+    // "How would you like to pay?" modal (Synchrony / Sungage / Cash /
+    // Card) is retained below but no longer opened — flipping this back
+    // to `setShowPayOptions(true)` re-enables the multi-option flow.
+    const nickelBase = process.env.NEXT_PUBLIC_NICKEL_PAY_URL;
+    if (!nickelBase) {
+      alert(
+        "Payment link isn't configured yet — please try again in a moment or contact us directly.",
+      );
+      return;
+    }
+
+    // Clear cart state first so a browser Back after paying doesn't show
+    // a stale cart.
     try {
       window.localStorage.removeItem(STORAGE_KEY);
       window.localStorage.removeItem(ANSWERS_KEY);
@@ -326,7 +353,20 @@ export default function QuestionsForm() {
       // ignore
     }
     window.dispatchEvent(new Event("estimate-change"));
-    setShowPayOptions(true);
+
+    // Build the Nickel URL. Using the URL API so query params merge
+    // correctly even if the base URL already carries some (e.g. a
+    // merchant ID). Same-tab navigation — customer completes payment
+    // there and Nickel handles the return experience.
+    const url = new URL(nickelBase);
+    url.searchParams.set("amount", grandTotal.toFixed(2));
+    // Tag the reference with our quote number so Nickel's records line up
+    // 1:1 with our history page.
+    const reference = submitQuoteNumber
+      ? `Quote#-${formatQuoteNumber(submitQuoteNumber)}`
+      : "Quote";
+    url.searchParams.set("orderReference", reference);
+    window.location.href = url.toString();
   }
 
   async function saveNote(productId: string, text: string) {
@@ -350,7 +390,7 @@ export default function QuestionsForm() {
     try {
       if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
 
-      const { id } = await submitQuote({
+      const { id, quote_number } = await submitQuote({
         products: items,
         answers: answersToSend,
         fulfillment,
@@ -361,6 +401,7 @@ export default function QuestionsForm() {
       // happens when Pay now is tapped (see clearCartForCheckout).
 
       setSubmitId(id);
+      setSubmitQuoteNumber(quote_number);
       setSubmitted(true);
       // Force the browser to recalc layout + scroll to top AFTER React has
       // unmounted the (tall) questions form and rendered the (shorter) invoice.
@@ -494,7 +535,9 @@ export default function QuestionsForm() {
   }
 
   if (submitted) {
-    const shortId = (submitId ?? "").replace(/-/g, "").slice(0, 8).toUpperCase();
+    const shortId = submitQuoteNumber
+      ? formatQuoteNumber(submitQuoteNumber)
+      : "";
 
     return (
       <>
@@ -535,7 +578,7 @@ export default function QuestionsForm() {
                   Estimate no.
                 </p>
                 <p className="font-mono text-sm font-semibold text-slate-900">
-                  #{shortId}
+                  {shortId}
                 </p>
               </div>
             )}
@@ -699,7 +742,9 @@ export default function QuestionsForm() {
               </button>
             </div>
             <ul className="mt-4 space-y-2">
-              {PAYMENT_OPTIONS.map((opt) => (
+              {PAYMENT_OPTIONS.filter(
+                (opt) => opt.financing !== "synchrony" || SYNCHRONY_ENABLED,
+              ).map((opt) => (
                 <li key={opt.id}>
                   <button
                     type="button"
