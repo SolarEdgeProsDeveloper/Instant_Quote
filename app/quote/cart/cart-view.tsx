@@ -347,6 +347,10 @@ function CartRow({
   const qty = qtyOf(item);
   const lineMin = (item.minPrice ?? 0) * qty;
   const lineMax = (item.maxPrice ?? 0) * qty;
+  const lineSavings =
+    item.maxPrice != null && item.maxPrice > (item.minPrice ?? 0)
+      ? lineMax - lineMin
+      : 0;
 
   return (
     <li className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -384,6 +388,14 @@ function CartRow({
           {item.maxPrice != null && (
             <span className="ml-1.5 text-slate-400 line-through">
               {formatPrice(lineMax)}
+            </span>
+          )}
+          {lineSavings > 0 && (
+            <span className="ml-1.5 font-medium text-emerald-700">
+              <span aria-hidden="true" className="text-emerald-500">
+                ✦
+              </span>{" "}
+              Save {formatPrice(lineSavings)}
             </span>
           )}
           {qty > 1 && (

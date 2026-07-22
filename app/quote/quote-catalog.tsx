@@ -232,7 +232,7 @@ export default function QuoteCatalog({
                           return (
                             <div
                               key={product.id}
-                              className="w-44 shrink-0 snap-start"
+                              className="w-48 shrink-0 snap-start"
                             >
                               <ProductCard
                                 product={product}

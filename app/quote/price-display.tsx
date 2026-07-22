@@ -65,13 +65,45 @@ export function PriceRange({
   }
 
   const savings = hasMin && hasMax && max! > min! ? max! - min! : 0;
-  const styles = SIZE[size];
   const cleanUnit = unit?.trim() || null;
   const suffix = cleanUnit ? (
     <span className="ml-0.5 text-[0.6em] font-medium opacity-70">
       /{cleanUnit}
     </span>
   ) : null;
+
+  // Compact "bar" layout — stacked, no "From" label, no pill. Used by
+  // product cards in tight grids and horizontal scrollers where a
+  // multi-row wrapped price + emerald-pill treatment reads as noise.
+  if (size === "bar") {
+    return (
+      <div className="leading-tight">
+        {hasMin && (
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-lg font-bold text-rose-600">
+              {formatPrice(min)}
+              {suffix}
+            </span>
+            {hasMax && savings > 0 && (
+              <span className="text-[11px] text-slate-400 line-through">
+                {formatPrice(max)}
+              </span>
+            )}
+          </div>
+        )}
+        {savings > 0 && (
+          <p className="mt-0.5 text-[11px] font-medium text-emerald-700">
+            <span aria-hidden="true" className="text-emerald-500">
+              ✦
+            </span>{" "}
+            Save {formatPrice(savings)}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const styles = SIZE[size];
 
   return (
     <div className={layout === "inline" ? "flex items-center gap-3" : ""}>
