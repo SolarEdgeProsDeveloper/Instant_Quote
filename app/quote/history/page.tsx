@@ -5,11 +5,10 @@ import {
   getUserQuotes,
   type SubmittedQuoteSummary,
 } from "@/app/actions/quote";
-import { getStyleForService } from "@/lib/service-style";
-import { PriceRange } from "../price-display";
 import CartBadge from "../cart-badge";
 import SignOutButton from "../signout-button";
 import ProductSearch from "../product-search";
+import QuoteHistoryList from "./quote-history-list";
 
 export default async function HistoryPage() {
   const supabase = await createSupabaseServerClient();
@@ -83,87 +82,10 @@ export default async function HistoryPage() {
           <div className="mt-8 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             {fetchError}
           </div>
-        ) : quotes.length === 0 ? (
-          <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-2xl">
-              📭
-            </div>
-            <p className="mt-4 text-sm text-slate-600">
-              You haven&apos;t submitted any quotes yet.
-            </p>
-            <Link
-              href="/quote"
-              className="mt-6 inline-block rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-500"
-            >
-              Start a new estimate
-            </Link>
-          </div>
         ) : (
-          <ul className="mt-8 space-y-4">
-            {quotes.map((q) => (
-              <QuoteRow key={q.id} quote={q} />
-            ))}
-          </ul>
+          <QuoteHistoryList quotes={quotes} />
         )}
       </section>
     </main>
   );
-}
-
-function QuoteRow({ quote }: { quote: SubmittedQuoteSummary }) {
-  const serviceNames = Array.from(
-    new Set(quote.products.map((p) => p.service)),
-  );
-
-  return (
-    <li>
-      <Link
-        href={`/quote/history/${quote.id}`}
-        className="group block rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-              {formatDate(quote.submitted_at)}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {serviceNames.map((name) => {
-                const style = getStyleForService(name);
-                return (
-                  <span
-                    key={name}
-                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700"
-                  >
-                    <span aria-hidden="true">{style.icon}</span>
-                    {name}
-                  </span>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-sm text-slate-600">
-              {quote.products.length}{" "}
-              {quote.products.length === 1 ? "product" : "products"}
-            </p>
-          </div>
-          <div className="text-right">
-            <PriceRange
-              min={quote.total_min}
-              max={quote.total_max}
-              size="card"
-            />
-          </div>
-        </div>
-      </Link>
-    </li>
-  );
-}
-
-function formatDate(s: string | null): string {
-  if (!s) return "—";
-  const d = new Date(s);
-  return d.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 }

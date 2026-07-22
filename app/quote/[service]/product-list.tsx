@@ -155,54 +155,38 @@ export default function ProductList({
           <div className="absolute inset-0 bg-gradient-to-b from-black/30 to-black/50" />
         </div>
 
-        <div className="relative mx-auto max-w-6xl px-6 py-12 sm:py-16">
+        <div className="relative mx-auto flex max-w-6xl flex-wrap items-center gap-3 px-6 py-3">
           <Link
             href="/quote"
-            className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur transition hover:bg-white/20"
+            aria-label="All services"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/30 bg-white/10 text-xs font-medium text-white shadow-sm backdrop-blur transition hover:bg-white/20"
           >
             <span aria-hidden="true">←</span>
-            All services
           </Link>
-          <div className="mt-4 flex items-center gap-4">
-            <span
-              className="flex h-14 w-14 items-center justify-center rounded-full bg-white/20 text-2xl backdrop-blur"
-              aria-hidden="true"
-            >
-              {style.icon}
-            </span>
-            <div>
-              <p className="text-xs font-medium uppercase tracking-widest text-white/80">
-                Service
-              </p>
-              <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                {service.name}
-              </h1>
-            </div>
-          </div>
-          <p className="mt-5 max-w-2xl text-base text-white/90">
-            {style.blurb}
-          </p>
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-base backdrop-blur"
+            aria-hidden="true"
+          >
+            {style.icon}
+          </span>
+          <h1 className="text-base font-semibold tracking-tight text-white sm:text-lg">
+            {service.name}
+          </h1>
+          <span className="ml-auto text-[11px] font-medium uppercase tracking-widest text-white/70">
+            {products.length}{" "}
+            {products.length === 1 ? "product" : "products"}
+          </span>
         </div>
       </section>
 
       {/* Product grid */}
-      <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-10 pb-32">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">Products</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {products.length}{" "}
-              {products.length === 1 ? "option" : "options"} available
-            </p>
-          </div>
-        </div>
-
+      <section className="mx-auto w-full max-w-6xl flex-1 px-6 py-4 pb-32">
         {products.length === 0 ? (
-          <div className="mt-10 rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
             No products found for this service yet.
           </div>
         ) : (
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {products.map((product) => {
               const cartItem = itemById.get(product.id);
               const isHighlighted = highlightId === product.id;

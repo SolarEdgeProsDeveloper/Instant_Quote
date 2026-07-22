@@ -19,13 +19,36 @@ import {
   type Fulfillment,
   type ProductNotes,
 } from "@/app/actions/quote";
+import {
+  requestFinancing,
+  startSynchronyApplication,
+} from "@/app/actions/financing";
+import { formatQuoteNumber } from "@/lib/quote-number";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "instant-quote:estimate:v4";
 const ANSWERS_KEY = "instant-quote:answers:v1";
 const FULFILLMENT_KEY = "instant-quote:fulfillment:v1";
 
-const PAYMENT_OPTIONS = [
+// Feature flag: gates the "Finance with Synchrony" option in the Pay-now
+// modal. Flip to `true` once the Synchrony sandbox app is approved
+// (currently Pending) and end-to-end testing succeeds. All server-side
+// integration (server action, JWE helper, webhook receiver, return page)
+// stays wired regardless of this flag — flipping it just makes the
+// button visible to customers again.
+const SYNCHRONY_ENABLED = false;
+
+type PaymentOption = {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  // When `financing` is set, clicking the option calls requestFinancing()
+  // with that provider instead of the "coming soon" placeholder.
+  financing?: "synchrony" | "sungage";
+};
+
+const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "pay-now",
     icon: "💳",
@@ -33,22 +56,26 @@ const PAYMENT_OPTIONS = [
     description: "Pay the full amount now, processed instantly.",
   },
   {
-    id: "financing",
-    icon: "📅",
-    title: "Financing",
-    description: "0–12 months, low or no interest.",
+    id: "synchrony",
+    icon: "🏦",
+    title: "Finance with Synchrony",
+    description:
+      "Monthly payments with low or no interest. Opens Synchrony's secure application in a new tab.",
+    financing: "synchrony",
+  },
+  {
+    id: "sungage",
+    icon: "☀️",
+    title: "Finance with Sungage",
+    description:
+      "Solar-specific financing with long-term low-rate options. Opens Sungage's secure application in a new tab.",
+    financing: "sungage",
   },
   {
     id: "cash",
     icon: "💵",
     title: "Cash",
     description: "Pay in person on install day.",
-  },
-  {
-    id: "loan",
-    icon: "🏦",
-    title: "Loan",
-    description: "Apply through our lending partners.",
   },
 ];
 
@@ -145,8 +172,66 @@ export default function QuestionsForm() {
   const [answers, setAnswers] = useState<Answers>({});
   const [submitted, setSubmitted] = useState(false);
   const [submitId, setSubmitId] = useState<string | null>(null);
+  const [submitQuoteNumber, setSubmitQuoteNumber] = useState<number | null>(
+    null,
+  );
   const [notes, setNotes] = useState<ProductNotes>({});
   const [showPayOptions, setShowPayOptions] = useState(false);
+  const [financingError, setFinancingError] = useState<string | null>(null);
+  const [financingPending, setFinancingPending] = useState<string | null>(null);
+
+  async function handlePaymentOptionClick(opt: PaymentOption) {
+    if (!opt.financing) {
+      alert(`${opt.title}: coming soon.`);
+      return;
+    }
+
+    // Sungage: simple hosted redirect via env-configured URL.
+    if (opt.financing === "sungage") {
+      const url = process.env.NEXT_PUBLIC_SUNGAGE_APPLY_URL;
+      if (!url) {
+        alert(
+          `${opt.title} isn't set up yet — please reach out to us directly to get started with this lender.`,
+        );
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
+      setShowPayOptions(false);
+      if (submitId) {
+        requestFinancing({
+          provider: opt.financing,
+          quoteId: submitId,
+          totalMin: grandTotal,
+        }).catch((err) => console.warn("[financing] notify failed:", err));
+      }
+      return;
+    }
+
+    // Synchrony: call our server action to kick off a prequalification.
+    // The action returns a Synchrony-hosted Apply URL (paylaterRedirection-
+    // Url) — we top-level redirect the customer there so they fill in PII
+    // on Synchrony's site, not ours.
+    if (!submitId) return;
+    setFinancingError(null);
+    setFinancingPending(opt.id);
+    try {
+      const { redirectUrl } = await startSynchronyApplication({
+        quoteId: submitId,
+        purchaseAmount: grandTotal,
+      });
+      // Same-tab redirect because Synchrony will redirect back to our
+      // return page when done.
+      window.location.href = redirectUrl;
+    } catch (err) {
+      console.error("[financing] synchrony failed:", err);
+      setFinancingError(
+        err instanceof Error
+          ? err.message
+          : "Couldn't start the Synchrony application. Please try again or pick a different option.",
+      );
+      setFinancingPending(null);
+    }
+  }
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
   const [pricingNoticeDismissed, setPricingNoticeDismissed] = useState(false);
 
@@ -245,6 +330,21 @@ export default function QuestionsForm() {
   }
 
   function clearCartForCheckout() {
+    // Pay Now: send the customer straight to Nickel Payments with the
+    // invoice total + a fixed reason string as query params. The old
+    // "How would you like to pay?" modal (Synchrony / Sungage / Cash /
+    // Card) is retained below but no longer opened — flipping this back
+    // to `setShowPayOptions(true)` re-enables the multi-option flow.
+    const nickelBase = process.env.NEXT_PUBLIC_NICKEL_PAY_URL;
+    if (!nickelBase) {
+      alert(
+        "Payment link isn't configured yet — please try again in a moment or contact us directly.",
+      );
+      return;
+    }
+
+    // Clear cart state first so a browser Back after paying doesn't show
+    // a stale cart.
     try {
       window.localStorage.removeItem(STORAGE_KEY);
       window.localStorage.removeItem(ANSWERS_KEY);
@@ -253,7 +353,20 @@ export default function QuestionsForm() {
       // ignore
     }
     window.dispatchEvent(new Event("estimate-change"));
-    setShowPayOptions(true);
+
+    // Build the Nickel URL. Using the URL API so query params merge
+    // correctly even if the base URL already carries some (e.g. a
+    // merchant ID). Same-tab navigation — customer completes payment
+    // there and Nickel handles the return experience.
+    const url = new URL(nickelBase);
+    url.searchParams.set("amount", grandTotal.toFixed(2));
+    // Tag the reference with our quote number so Nickel's records line up
+    // 1:1 with our history page.
+    const reference = submitQuoteNumber
+      ? `Quote#-${formatQuoteNumber(submitQuoteNumber)}`
+      : "Quote";
+    url.searchParams.set("orderReference", reference);
+    window.location.href = url.toString();
   }
 
   async function saveNote(productId: string, text: string) {
@@ -277,7 +390,7 @@ export default function QuestionsForm() {
     try {
       if (dbAnswersSaveRef.current) clearTimeout(dbAnswersSaveRef.current);
 
-      const { id } = await submitQuote({
+      const { id, quote_number } = await submitQuote({
         products: items,
         answers: answersToSend,
         fulfillment,
@@ -288,6 +401,7 @@ export default function QuestionsForm() {
       // happens when Pay now is tapped (see clearCartForCheckout).
 
       setSubmitId(id);
+      setSubmitQuoteNumber(quote_number);
       setSubmitted(true);
       // Force the browser to recalc layout + scroll to top AFTER React has
       // unmounted the (tall) questions form and rendered the (shorter) invoice.
@@ -421,7 +535,9 @@ export default function QuestionsForm() {
   }
 
   if (submitted) {
-    const shortId = (submitId ?? "").replace(/-/g, "").slice(0, 8).toUpperCase();
+    const shortId = submitQuoteNumber
+      ? formatQuoteNumber(submitQuoteNumber)
+      : "";
 
     return (
       <>
@@ -462,7 +578,7 @@ export default function QuestionsForm() {
                   Estimate no.
                 </p>
                 <p className="font-mono text-sm font-semibold text-slate-900">
-                  #{shortId}
+                  {shortId}
                 </p>
               </div>
             )}
@@ -626,12 +742,15 @@ export default function QuestionsForm() {
               </button>
             </div>
             <ul className="mt-4 space-y-2">
-              {PAYMENT_OPTIONS.map((opt) => (
+              {PAYMENT_OPTIONS.filter(
+                (opt) => opt.financing !== "synchrony" || SYNCHRONY_ENABLED,
+              ).map((opt) => (
                 <li key={opt.id}>
                   <button
                     type="button"
-                    onClick={() => alert(`${opt.title}: coming soon.`)}
-                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    disabled={financingPending !== null}
+                    onClick={() => handlePaymentOptionClick(opt)}
+                    className="group flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xl"
@@ -651,12 +770,17 @@ export default function QuestionsForm() {
                       aria-hidden="true"
                       className="shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5"
                     >
-                      →
+                      {financingPending === opt.id ? "…" : "→"}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
+            {financingError && (
+              <p className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {financingError}
+              </p>
+            )}
           </div>
         </div>
       )}

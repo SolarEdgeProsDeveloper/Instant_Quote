@@ -53,7 +53,7 @@ export function ProductCard({
       />
       <div
         className={`relative overflow-hidden bg-gradient-to-br ${style.gradient} ${
-          compact ? "aspect-video" : "aspect-[4/3]"
+          compact ? "aspect-video" : "aspect-video"
         }`}
       >
         {showImage && (
@@ -77,32 +77,30 @@ export function ProductCard({
         )}
       </div>
 
-      <div className={`flex flex-1 flex-col ${compact ? "p-3" : "p-4"}`}>
+      <div className={`flex flex-1 flex-col ${compact ? "p-2.5" : "p-3"}`}>
         <h3
-          className={`font-semibold text-slate-900 ${
-            compact
-              ? "line-clamp-2 text-xs leading-snug"
-              : "line-clamp-2 text-sm leading-snug"
+          className={`line-clamp-2 font-semibold text-slate-900 leading-snug ${
+            compact ? "text-xs" : "text-[13px]"
           }`}
         >
           {product.name}
         </h3>
         {!compact && (product.subService || product.unit) && (
-          <p className="mt-0.5 text-[11px] text-slate-500">
+          <p className="mt-0.5 text-[10px] text-slate-500">
             {[product.subService, product.unit].filter(Boolean).join(" · ")}
           </p>
         )}
 
-        <div className={compact ? "mt-2" : "mt-3"}>
+        <div className={compact ? "mt-1.5" : "mt-2"}>
           <PriceRange
             min={product.minPrice}
             max={product.maxPrice}
-            size={compact ? "bar" : "card"}
+            size="bar"
             unit={product.unit}
           />
         </div>
 
-        <div className={`relative z-20 mt-auto ${compact ? "pt-2" : "pt-3"}`}>
+        <div className={`relative z-20 mt-auto ${compact ? "pt-2" : "pt-2.5"}`}>
           {inCart ? (
             <QtySelector
               quantity={quantity}
@@ -114,9 +112,7 @@ export function ProductCard({
             <button
               type="button"
               onClick={onAdd}
-              className={`w-full rounded-full bg-indigo-600 font-medium text-white shadow-sm transition hover:bg-indigo-500 ${
-                compact ? "px-3 py-1.5 text-xs" : "px-4 py-2.5 text-sm"
-              }`}
+              className="w-full rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-500"
             >
               Add to estimate
             </button>
@@ -138,8 +134,8 @@ export function QtySelector({
   onDecrement: () => void;
   compact?: boolean;
 }) {
-  const btnSize = compact ? "h-7 w-7" : "h-9 w-9";
-  const labelSize = compact ? "text-xs" : "text-sm";
+  const btnSize = compact ? "h-6 w-6" : "h-7 w-7";
+  const labelSize = "text-xs";
 
   return (
     <div
@@ -156,7 +152,7 @@ export function QtySelector({
         <span className="text-base font-semibold leading-none">−</span>
       </button>
       <span className={`font-semibold text-indigo-700 ${labelSize}`}>
-        {compact ? quantity : `${quantity} in cart`}
+        {quantity} {compact ? "" : "in cart"}
       </span>
       <button
         type="button"

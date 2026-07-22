@@ -38,6 +38,7 @@ export type ProductNotes = Record<string, string>;
 
 export type SubmittedQuoteSummary = {
   id: string;
+  quote_number: number;
   submitted_at: string | null;
   total_min: number | null;
   total_max: number | null;
@@ -173,7 +174,7 @@ export async function submitQuote(input: {
   products: CartProduct[];
   answers: Answers;
   fulfillment?: Fulfillment | null;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; quote_number: number }> {
   const { supabase, user } = await requireUser();
   const { total_min: products_total_min, total_max: products_total_max } =
     totalsOf(input.products);
@@ -201,6 +202,7 @@ export async function submitQuote(input: {
   if (lookupError) throw lookupError;
 
   let quoteId: string;
+  let quoteNumber: number;
   if (existing) {
     const { data, error } = await supabase
       .from("quotes")
@@ -214,10 +216,11 @@ export async function submitQuote(input: {
         submitted_at: new Date().toISOString(),
       })
       .eq("id", existing.id)
-      .select("id")
+      .select("id, quote_number")
       .single();
     if (error) throw error;
     quoteId = data.id;
+    quoteNumber = data.quote_number as number;
   } else {
     const { data, error } = await supabase
       .from("quotes")
@@ -231,15 +234,17 @@ export async function submitQuote(input: {
         fulfillment,
         submitted_at: new Date().toISOString(),
       })
-      .select("id")
+      .select("id, quote_number")
       .single();
     if (error) throw error;
     quoteId = data.id;
+    quoteNumber = data.quote_number as number;
   }
 
   // Fire-and-forget admin notification — never block the user on email send.
   notifyInvoiceSubmitted({
     quoteId,
+    quoteNumber,
     userEmail: user.email ?? null,
     products: input.products,
     answers: input.answers,
@@ -248,14 +253,14 @@ export async function submitQuote(input: {
     console.error("[submitQuote] notify failed:", err);
   });
 
-  return { id: quoteId };
+  return { id: quoteId, quote_number: quoteNumber };
 }
 
 export async function getUserQuotes(): Promise<SubmittedQuoteSummary[]> {
   const { supabase, user } = await requireUser();
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, submitted_at, total_min, total_max, products")
+    .select("id, quote_number, submitted_at, total_min, total_max, products")
     .eq("user_id", user.id)
     .eq("status", "submitted")
     .order("submitted_at", { ascending: false });
@@ -263,6 +268,7 @@ export async function getUserQuotes(): Promise<SubmittedQuoteSummary[]> {
   if (error) throw error;
   return (data ?? []).map((row) => ({
     id: row.id,
+    quote_number: row.quote_number,
     submitted_at: row.submitted_at,
     total_min: row.total_min,
     total_max: row.total_max,
@@ -276,7 +282,7 @@ export async function getQuoteById(
   const { supabase, user } = await requireUser();
   const { data, error } = await supabase
     .from("quotes")
-    .select("id, submitted_at, total_min, total_max, products, answers, notes")
+    .select("id, quote_number, submitted_at, total_min, total_max, products, answers, notes")
     .eq("user_id", user.id)
     .eq("id", id)
     .maybeSingle();
@@ -285,6 +291,7 @@ export async function getQuoteById(
   if (!data) return null;
   return {
     id: data.id,
+    quote_number: data.quote_number,
     submitted_at: data.submitted_at,
     total_min: data.total_min,
     total_max: data.total_max,
